@@ -10,6 +10,7 @@ from tremor.config import Config
 from tremor.episodes import Episode, build_episodes, episode_of, episode_starts
 from tremor.event_study import StudyResult, daily_returns, select_comparables, study
 from tremor.events import Event
+from tremor.robustness import fdr_adjust
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,8 @@ def analyze_event(
                         broader=same_type)
         for a in cfg.assets
     }
-    return Analysis(target=target, episode=ep, results=results)
+    # One Analysis tests every Asset × headline day; correct for that family (ADR-0028).
+    return Analysis(target=target, episode=ep, results=fdr_adjust(results, cfg.event_study))
 
 
 def analyze_group(
@@ -54,8 +56,8 @@ def analyze_group(
         if e.event_type == event_type
     ]
     same_region = [e for e in starts if e.region == region]
-    return {
+    return fdr_adjust({
         a.ticker: study(prices, same_region, a.ticker, cfg.benchmark, cfg.event_study,
                         broader=starts)
         for a in cfg.assets
-    }
+    }, cfg.event_study)

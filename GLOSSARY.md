@@ -137,3 +137,11 @@ _(Deferred past v1, ADR-0008.)_ A User's holdings, mapped onto the Asset univers
 ## License tag
 
 A label on every Source: commercial-OK or non-commercial. Everything is usable personally; the tag exists so a future paid version can filter (ADR-0004).
+
+## q-value
+
+A p-value adjusted for running many tests at once (Benjamini–Hochberg). Each Analysis tests every Asset at +5 and +20 trading days, so a Recommendation needs q < 0.05, not just p < 0.05 (ADR-0028).
+
+## Placebo test
+
+The same event study run on random dates when nothing happened. It shows how often chance alone looks "significant", and how unusual the real result is by comparison (ADR-0028).

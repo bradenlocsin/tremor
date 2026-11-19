@@ -23,9 +23,10 @@ from tremor.analysis import Analysis
 from tremor.event_study import StudyResult
 from tremor.events import Event
 from tremor.refine import SPEND_SCHEMA, Usage, record_spend
+from tremor.robustness import DECISION_DAYS
 
 LEVELS = ("Low", "Med", "High")
-HORIZONS = (5, 20)
+HORIZONS = DECISION_DAYS  # the same days the multiple-testing family covers (ADR-0028)
 DISCLAIMER = "Not financial advice. Educational analysis of historical market reactions."
 
 SCHEMA = """
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS recommendations (
     mean_car             REAL,
     t_stat               REAL,
     p_value              REAL,
+    q_value              REAL,               -- Benjamini–Hochberg across the Analysis
     n                    INTEGER NOT NULL,
     broadened            INTEGER NOT NULL,
     confidence_computed  TEXT,
@@ -66,6 +68,7 @@ class Recommendation:
     mean_car: float | None = None
     t_stat: float | None = None
     p_value: float | None = None
+    q_value: float | None = None
     confidence_computed: str | None = None
     confidence: str | None = None
     downgrade_reason: str | None = None
@@ -118,6 +121,7 @@ def decide(
         mean_car=best.mean_car,
         t_stat=best.t_stat,
         p_value=best.p_value,
+        q_value=best.q_value,
         confidence_computed=level,
         confidence=level,
     )
@@ -230,13 +234,18 @@ def recommend(
 
 def save_recommendations(conn: sqlite3.Connection, recs: list[Recommendation]) -> None:
     conn.executescript(SCHEMA)
+    if "q_value" not in {r[1] for r in conn.execute("PRAGMA table_info(recommendations)")}:
+        conn.execute("ALTER TABLE recommendations ADD COLUMN q_value REAL")
     now = datetime.now(UTC).isoformat(timespec="seconds")
+    cols = ("id, event_id, episode_id, asset, stance, horizon_days, mean_car, t_stat, p_value,"
+            " q_value, n, broadened, confidence_computed, confidence, downgrade_reason,"
+            " rationale, no_rec_reason, comparables, model, created_at")
     conn.executemany(
-        "INSERT OR REPLACE INTO recommendations VALUES"
-        " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT OR REPLACE INTO recommendations ({cols}) VALUES"
+        " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (f"{r.event_id}:{r.asset}", r.event_id, r.episode_id, r.asset, r.stance,
-             r.horizon_days, r.mean_car, r.t_stat, r.p_value, r.n, int(r.broadened),
+             r.horizon_days, r.mean_car, r.t_stat, r.p_value, r.q_value, r.n, int(r.broadened),
              r.confidence_computed, r.confidence, r.downgrade_reason, r.rationale,
              r.no_rec_reason, ",".join(r.comparables), r.model, now)
             for r in recs

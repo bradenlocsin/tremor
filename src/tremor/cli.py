@@ -190,6 +190,41 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_placebo(args: argparse.Namespace) -> int:
+    from tremor.analysis import analyze_group
+    from tremor.events import load_events
+    from tremor.prices import load_prices
+    from tremor.robustness import placebo
+    from tremor.storage import connect
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    events = load_events(conn)
+    if args.origin != "all":
+        events = [e for e in events if e.origin == args.origin]
+    prices = load_prices(conn, cfg.tickers)
+    results = analyze_group(args.type, args.region, events, prices, cfg)
+    all_days = [e.occurred_on for e in load_events(conn)]  # placebo windows avoid every Event
+    print(f"Placebo test: {args.type} in {args.region} ({args.origin} Events), "
+          f"{args.draws} random draws per Asset and day\n")
+    print(f"{'Asset':6} {'day':>4} {'N':>3} {'mean CAR':>9} {'p':>6} {'q':>6} "
+          f"{'chance p<.05':>13} {'placebo p':>10}")
+    for asset, r in results.items():
+        for day in cfg.event_study.headline_days:
+            res = placebo(prices, r, all_days, asset, cfg.benchmark, cfg.event_study, day,
+                          draws=args.draws)
+            if res is None:
+                print(f"{asset:6} {day:>4} {r.n:>3}  (not enough Comparables or placebo days)")
+                continue
+            h = r.headlines[day]
+            q = "–" if h.q_value is None else f"{h.q_value:.2f}"
+            print(f"{asset:6} {day:>+4} {r.n:>3} {res.real_mean_car:>+8.2%} {res.real_p:>6.2f} "
+                  f"{q:>6} {res.rejection_rate:>12.0%} {res.empirical_p:>10.3f}")
+    print("\nchance p<.05: how often random dates look 'significant' with the same N."
+          "\nplacebo p: share of random-date averages at least as extreme as the real one.")
+    return 0
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     import os
 
@@ -308,6 +343,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("backtest", help="back-test Recommendations without look-ahead").set_defaults(
         func=cmd_backtest
     )
+    pl = sub.add_parser("placebo", help="event study on random non-event dates (ADR-0028)")
+    pl.add_argument("--type", default="shipping_attack")
+    pl.add_argument("--region", default="red_sea")
+    pl.add_argument("--origin", choices=["all", "seed", "gdelt"], default="all")
+    pl.add_argument("--draws", type=int, default=1000)
+    pl.set_defaults(func=cmd_placebo)
     ev = sub.add_parser("eval", help="the Eval set: sample items, then score a refiner")
     ev.add_argument("action", choices=["sample", "panel", "examples", "score", "progress"],
                     help="panel: label the Eval set with the Codex labeler/skeptic/judge panel")
