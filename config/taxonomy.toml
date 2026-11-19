@@ -1,0 +1,164 @@
+# TREMOR Event-type taxonomy and Regions (ADR-0011, ADR-0019).
+# Bump `version` whenever a definition changes: Eval set labels and Comparables depend on it.
+version = 1
+
+# Each Event type has:
+#   definition : one line a non-expert can label against
+#   example    : a concrete case
+#   cameo      : GDELT CAMEO event codes that make a Candidate eligible (prefix match: "19" covers 190-196)
+#   keywords   : extra words the Candidate's source URL or title must contain (any), to narrow broad codes
+#   first_slice: in the Red Sea first slice (ADR-0021)
+
+[[event_types]]
+id = "shipping_attack"
+name = "Shipping attack"
+definition = "A commercial vessel is struck, seized, boarded or fired on."
+example = "Houthi missile hits the tanker Marlin Luanda in the Gulf of Aden (Jan 2024)."
+cameo = ["181", "190", "193", "195", "171"]
+keywords = ["ship", "vessel", "tanker", "cargo", "freighter", "container", "maritime", "hijack", "seiz"]
+first_slice = true
+
+[[event_types]]
+id = "military_strike"
+name = "Military strike"
+definition = "A state or armed group carries out a missile, air, drone or artillery strike on a target on land."
+example = "US and UK air strikes on Houthi targets in Yemen (Jan 2024)."
+cameo = ["190", "194", "195", "183"]
+keywords = []
+first_slice = true
+
+[[event_types]]
+id = "chokepoint_disruption"
+name = "Chokepoint disruption"
+definition = "Passage through a strait, canal or key shipping lane is blocked, closed, threatened as a whole, or mass-rerouted."
+example = "Major carriers suspend Red Sea transits and reroute around the Cape of Good Hope (Dec 2023)."
+cameo = ["191", "1381", "163"]
+keywords = ["strait", "canal", "suez", "bab", "hormuz", "transit", "reroute", "blockade", "shipping lane", "red sea"]
+first_slice = true
+
+[[event_types]]
+id = "sanctions_imposed"
+name = "Sanctions imposed"
+definition = "A government or bloc imposes or tightens economic sanctions, an embargo or a boycott."
+example = "EU adopts a new sanctions package against Russia."
+cameo = ["163", "172"]
+keywords = ["sanction", "embargo", "boycott", "blacklist"]
+first_slice = false
+
+[[event_types]]
+id = "sanctions_eased"
+name = "Sanctions eased"
+definition = "A government or bloc lifts or loosens sanctions or an embargo."
+example = "US eases oil sanctions on Venezuela (Oct 2023)."
+cameo = ["081", "085"]
+keywords = ["sanction", "embargo", "lift", "ease", "waiver"]
+first_slice = false
+
+[[event_types]]
+id = "export_restriction"
+name = "Export restriction"
+definition = "A government bans or limits exports of a commodity or technology."
+example = "India bans non-basmati rice exports (Jul 2023)."
+cameo = ["163"]
+keywords = ["export ban", "export control", "export restriction", "ban export", "curb export"]
+first_slice = false
+
+[[event_types]]
+id = "military_mobilization"
+name = "Military mobilization"
+definition = "A state raises military alert levels, masses troops or deploys major forces toward a rival."
+example = "Russia masses troops on Ukraine's border (late 2021)."
+cameo = ["152", "154"]
+keywords = []
+first_slice = false
+
+[[event_types]]
+id = "military_threat"
+name = "Military threat"
+definition = "A state or armed group explicitly threatens military action against another."
+example = "Iran threatens to close the Strait of Hormuz."
+cameo = ["138"]
+keywords = []
+first_slice = false
+
+[[event_types]]
+id = "deescalation"
+name = "Ceasefire or de-escalation"
+definition = "Parties declare a ceasefire, truce, withdrawal or other de-escalation of fighting."
+example = "Israel and Hamas agree a temporary truce (Nov 2023)."
+cameo = ["087", "0871", "0872", "0873", "0874"]
+keywords = []
+first_slice = false
+
+[[event_types]]
+id = "infrastructure_attack"
+name = "Energy or infrastructure attack"
+definition = "An attack damages energy, pipeline, port, undersea cable or similar critical infrastructure."
+example = "Drone attack on Saudi Aramco's Abqaiq facility (Sep 2019)."
+cameo = ["1712", "183", "195"]
+keywords = ["pipeline", "refinery", "oil field", "oilfield", "port", "cable", "power plant", "terminal", "facility"]
+first_slice = false
+
+[[event_types]]
+id = "leader_assassination"
+name = "Leader assassination"
+definition = "A senior political or military leader is killed or targeted in an assassination."
+example = "US strike kills Iranian general Qasem Soleimani (Jan 2020)."
+cameo = ["186"]
+keywords = []
+first_slice = false
+
+[[event_types]]
+id = "regime_instability"
+name = "Coup or regime instability"
+definition = "A coup, attempted coup, sudden leader removal or mass uprising threatens a government's control."
+example = "Wagner Group mutiny marches toward Moscow (Jun 2023)."
+cameo = []
+keywords = ["coup", "mutiny", "junta", "overthrow", "uprising"]
+first_slice = false
+
+
+# Regions: predefined zones (ADR-0011). Bounding boxes on the Event's location.
+# Checked in order; the first match wins, so put smaller or higher-priority zones first.
+
+[[regions]]
+id = "red_sea"
+name = "Red Sea / Bab-el-Mandeb"
+lat = [10.5, 30.5]
+lon = [32.0, 51.5]
+first_slice = true
+
+[[regions]]
+id = "hormuz"
+name = "Strait of Hormuz / Persian Gulf"
+lat = [23.0, 30.5]
+lon = [47.5, 57.5]
+first_slice = false
+
+[[regions]]
+id = "taiwan_strait"
+name = "Taiwan Strait"
+lat = [21.5, 26.5]
+lon = [117.0, 123.0]
+first_slice = false
+
+[[regions]]
+id = "black_sea"
+name = "Black Sea"
+lat = [40.5, 47.5]
+lon = [27.0, 42.0]
+first_slice = false
+
+[[regions]]
+id = "levant"
+name = "Eastern Mediterranean / Levant"
+lat = [29.0, 37.5]
+lon = [32.0, 37.5]
+first_slice = false
+
+[[regions]]
+id = "south_china_sea"
+name = "South China Sea"
+lat = [0.0, 23.0]
+lon = [105.0, 121.0]
+first_slice = false
