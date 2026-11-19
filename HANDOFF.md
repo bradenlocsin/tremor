@@ -19,7 +19,8 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | #3 prices | done (PR #19) | `uv run tremor prices` fills `data/tremor.sqlite`; BDRY history starts 2018-03-22 |
 | #7 taxonomy | done (PR #20) | `config/taxonomy.toml`; CAMEO codes need checking against real GDELT data in #8 |
 | #4 seed Events | done (PR #21) | `uv run tremor seed`; `config/seed_events.toml` (12 verified Events) |
-| #5 event-study engine | done | `tremor.event_study.study()`; 8 synthetic-data tests |
+| #5 event-study engine | done (PR #22) | `tremor.event_study.study()`; 8 synthetic-data tests |
+| #6 first chart | done | `uv run tremor chart --type shipping_attack`; PNGs in `docs/charts/` |
 
 ## Log
 
@@ -28,3 +29,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:12 (Claude): #7 taxonomy (12 Event types, 6 Regions) done. CAMEO codes are from memory of the CAMEO codebook; verify against real GDELT rows in #8.
 - 2026-11-19 00:14 (Claude): #4 seed Events done: 12 Red Sea Events, each date checked against Wikipedia (3 unverifiable ones dropped).
 - 2026-11-19 00:15 (Claude): #5 event-study engine done (market model, AR/CAR, cross-sectional t-test, N>=8 rule, broadening, ETF start-date skips). On the 12 seeds every result is 'insufficient' (N=5-6), as expected.
+- 2026-11-19 00:17 (Claude): #6 first charts done (docs/charts/, light+dark), in README.
