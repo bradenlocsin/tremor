@@ -39,6 +39,7 @@ class Config:
     rationale_model: str
     daily_llm_usd: float
     backfill_llm_usd: float
+    recommendations_enabled: bool = True
 
     @property
     def tickers(self) -> list[str]:
@@ -70,4 +71,5 @@ def load_config(path: Path | str = DEFAULT_CONFIG) -> Config:
         rationale_model=raw["models"]["rationale"],
         daily_llm_usd=raw["budget"]["daily_llm_usd"],
         backfill_llm_usd=raw["budget"]["backfill_llm_usd"],
+        recommendations_enabled=raw.get("recommendations", {}).get("enabled", True),
     )

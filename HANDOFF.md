@@ -23,7 +23,8 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | #6 first chart | done (PR #23) | `uv run tremor chart --type shipping_attack`; PNGs in `docs/charts/` |
 | #8 GDELT ingestion | done (PR #24) | `uv run tremor gdelt backfill` (resumable; first slice only unless `--all`), `uv run tremor gdelt pull` (hourly) |
 | #9 LLM refinement | code merged (PR #25); issue reopened until a real run (needs API key) | `uv run tremor refine --fake` (dry run); with a key: `uv run tremor refine --backfill` |
-| #11 Episodes | done | `tremor.episodes`, `tremor.analysis.analyze_event()` |
+| #11 Episodes | done (PR #26) | `tremor.episodes`, `tremor.analysis.analyze_event()` |
+| #12 Recommendations | done | `uv run tremor recommend [--fake]`; switch: `[recommendations] enabled` in config |
 
 ## Log
 
@@ -36,3 +37,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:19 (Claude): #8 GDELT ingestion done. Real-data check: Galaxy Leader hijack found on 2023-11-19 (code 181). Red Sea box tightened (taxonomy v2) after Sudan/Gaza noise. Full backfill starts next (background, log: data/backfill.log).
 - 2026-11-19 00:23 (Claude): #9 refinement built (Claude via messages.parse + FakeRefiner, fallback chain, budget caps). BLOCKED for real runs: no ANTHROPIC_API_KEY. Dry run on 12 real URLs: 4 live / 5 wayback / 3 headline-only. GDELT backfill running (~4h, resumable: rerun 'uv run tremor gdelt backfill').
 - 2026-11-19 00:25 (Claude): #11 Episodes done; Comparables are now Episode starts (tremor.analysis). #9 reopened: code merged, real refinement run waits on an API key.
+- 2026-11-19 00:26 (Claude): #12 Recommendations done (deterministic stance/horizon/confidence, Sonnet rationale via messages.parse, downgrade-only, on/off switch). On seed data: correctly no Recommendations (N<8).

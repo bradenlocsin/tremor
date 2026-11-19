@@ -48,6 +48,10 @@ min_comparables = 8
 # ADR-0020
 episode_gap_trading_days = 10
 
+[recommendations]
+# ADR-0004: the Recommendation layer can be switched off; Analysis keeps working.
+enabled = true
+
 [models]
 # ADR-0022. IDs live here so a tier can change without code edits.
 refinement = "claude-haiku-5-5"
