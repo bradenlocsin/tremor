@@ -91,6 +91,33 @@ def cmd_gdelt(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_refine(args: argparse.Namespace) -> int:
+    import os
+
+    from tremor import gdelt
+    from tremor.refine import ClaudeRefiner, FakeRefiner, refine_candidates
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    gdelt.ensure_schema(conn)
+    if args.fake:
+        refiner = FakeRefiner()
+    elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        refiner = ClaudeRefiner(cfg.refinement_model)
+    else:
+        print("No Anthropic credentials found (set ANTHROPIC_API_KEY). Use --fake for a dry run.")
+        return 2
+    stats = refine_candidates(
+        conn, cfg, default_taxonomy().first_slice(), refiner,
+        purpose="backfill" if args.backfill else "refine",
+        per_day_per_type=args.per_day, since=args.since, limit=args.limit,
+    )
+    print(stats)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -113,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--workers", type=int, default=6)
     g.add_argument("--all", action="store_true", help="every Region and type, not just the first slice")
     g.set_defaults(func=cmd_gdelt)
+    rf = sub.add_parser("refine", help="LLM-refine Candidates into Events")
+    rf.add_argument("--fake", action="store_true", help="dry run with the deterministic refiner")
+    rf.add_argument("--backfill", action="store_true", help="charge the one-time backfill budget")
+    rf.add_argument("--per-day", type=int, default=3, help="most-covered URLs per day and type")
+    rf.add_argument("--since", default=None, help="only Candidates on/after this ISO date")
+    rf.add_argument("--limit", type=int, default=None)
+    rf.set_defaults(func=cmd_refine)
     return parser
 
 
