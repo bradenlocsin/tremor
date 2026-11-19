@@ -223,6 +223,8 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print(f"{s.run_id}: n={s.n}  real-vs-noise {fmt(s.real_accuracy)}  "
               f"Event type {fmt(s.type_accuracy)}  Region {fmt(s.region_accuracy)}  "
               f"noise rejected {fmt(s.noise_rejection)}")
+        print(f"  pipeline: kept-Event precision {fmt(s.keep_precision)}  "
+              f"recall {fmt(s.keep_recall)}")
     done, total = evalset.progress(conn)
     print(f"labeled {done} / {total}")
     return 0
