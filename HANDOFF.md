@@ -29,6 +29,7 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | #14 dashboard | done (PR #29) | `TREMOR_PASSCODE=x uv run streamlit run src/tremor/dashboard/app.py` |
 | #10 Eval set | built; open for user labeling | after backfill: `uv run tremor eval sample`, label on the dashboard, then `uv run tremor eval score` |
 | #15 deploy | prep merged; deploy needs the user | follow `docs/deploy.md` (Fly.io account + `fly launch`) |
+| #16 sensor context | done | `tremor.sensors`; recorder runs in the daily job |
 
 ## Log
 
@@ -46,3 +47,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:31 (Claude): #14 dashboard done (Streamlit, passcode gate, Plotly CAR chart with hover, Recommendation cards, map, Track record page). Headless AppTest covers lock/unlock and page switching. Added live-Recommendation scoring (tremor.scoring) that #13's PR text promised.
 - 2026-11-19 00:34 (Claude): #10 labeling page + eval scoring built; stale-dated GDELT rows (event date >30d before publish) now skipped. Issue stays open: needs the user's 100 blind labels + a real model score. Run 'uv run tremor eval sample' only AFTER the backfill completes.
 - 2026-11-19 00:36 (Claude): #15 deploy prep merged (jobs, scheduler, backups, Dockerfile, fly.toml, docs/deploy.md). Both jobs ran locally end to end. Fixed: price update held a write lock across downloads. Actual deploy BLOCKED: needs the user's Fly.io account (docs/deploy.md).
+- 2026-11-19 00:39 (Claude): #16 sensor context done via IMF PortWatch (the upstream behind gods-eye-view's chokepoints), with history back to 2019 (8,628 rows). Context in the dashboard + rationale, never in the Analysis.

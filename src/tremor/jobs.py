@@ -69,9 +69,12 @@ def daily(cfg: Config | None = None) -> None:
     from tremor.scoring import score_live
     from tremor.storage import connect
 
+    from tremor.sensors import context_text, record_chokepoints
+
     cfg = cfg or load_config()
     conn = connect(cfg.storage_path)
     _step("prices", lambda: update_prices(conn, YFinanceSource(), cfg.tickers))
+    _step("chokepoint recorder", lambda: record_chokepoints(conn, "red_sea"))
     prices = load_prices(conn, cfg.tickers)
     events = load_events(conn)
 
@@ -84,8 +87,10 @@ def daily(cfg: Config | None = None) -> None:
         explainer = ClaudeExplainer(cfg.rationale_model) if has_credentials() else None
         by_id = {e.id: e for e in events}
         for target in recent:
+            ctx = context_text(conn, target.region, target.occurred_on)
             save_recommendations(conn, recommend(
-                analyze_event(target, events, prices, cfg, episodes), by_id, explainer, conn))
+                analyze_event(target, events, prices, cfg, episodes), by_id, explainer, conn,
+                context=ctx))
         return f"{len(recent)} recent Episodes"
 
     _step("recommendations", recs)
