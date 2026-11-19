@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+*.duckdb
+*.duckdb.wal
+*.sqlite
+.env
+.streamlit/secrets.toml
+.handoff-stop
+.DS_Store
+.claude/settings.local.json
+.handoff/
