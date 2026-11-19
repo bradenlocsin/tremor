@@ -62,6 +62,14 @@ class Taxonomy:
                 return r
         raise KeyError(f"unknown Region: {region_id}")
 
+    def first_slice(self) -> "Taxonomy":
+        """Only the first-slice Event types and Regions (ADR-0021)."""
+        return Taxonomy(
+            version=self.version,
+            event_types=tuple(t for t in self.event_types if t.first_slice),
+            regions=tuple(r for r in self.regions if r.first_slice),
+        )
+
     def region_for(self, lat: float, lon: float) -> Region | None:
         """First Region containing the point (Regions are checked in file order)."""
         return next((r for r in self.regions if r.contains(lat, lon)), None)

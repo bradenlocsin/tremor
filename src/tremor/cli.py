@@ -68,6 +68,29 @@ def cmd_chart(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gdelt(args: argparse.Namespace) -> int:
+    from datetime import date, timedelta
+
+    from tremor import gdelt
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    gdelt.ensure_schema(conn)
+    tax = default_taxonomy() if args.all else default_taxonomy().first_slice()
+    if args.action == "backfill":
+        start = date.fromisoformat(args.start)
+        end = date.fromisoformat(args.end) if args.end else date.today() - timedelta(days=1)
+        print(f"backfilling GDELT 1.0 daily files {start} → {end}")
+        print(f"kept {gdelt.backfill(conn, tax, start, end, workers=args.workers)} Candidates")
+    elif args.action == "pull":
+        print(f"kept {gdelt.pull_latest(conn, tax)} Candidates from GDELT 2.0")
+    for region, types, n, urls in gdelt.candidate_counts(conn):
+        print(f"{region:16} {types:60} {n:7} rows {urls:7} urls")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -83,6 +106,13 @@ def build_parser() -> argparse.ArgumentParser:
     chart.add_argument("--region", default="red_sea", help="Region id")
     chart.add_argument("--out", default="docs/charts/event-study.png")
     chart.set_defaults(func=cmd_chart)
+    g = sub.add_parser("gdelt", help="ingest GDELT Candidates")
+    g.add_argument("action", choices=["backfill", "pull", "stats"])
+    g.add_argument("--start", default="2015-01-01")
+    g.add_argument("--end", default=None, help="default: yesterday")
+    g.add_argument("--workers", type=int, default=6)
+    g.add_argument("--all", action="store_true", help="every Region and type, not just the first slice")
+    g.set_defaults(func=cmd_gdelt)
     return parser
 
 

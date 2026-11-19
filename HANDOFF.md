@@ -20,7 +20,8 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | #7 taxonomy | done (PR #20) | `config/taxonomy.toml`; CAMEO codes need checking against real GDELT data in #8 |
 | #4 seed Events | done (PR #21) | `uv run tremor seed`; `config/seed_events.toml` (12 verified Events) |
 | #5 event-study engine | done (PR #22) | `tremor.event_study.study()`; 8 synthetic-data tests |
-| #6 first chart | done | `uv run tremor chart --type shipping_attack`; PNGs in `docs/charts/` |
+| #6 first chart | done (PR #23) | `uv run tremor chart --type shipping_attack`; PNGs in `docs/charts/` |
+| #8 GDELT ingestion | done | `uv run tremor gdelt backfill` (resumable; first slice only unless `--all`), `uv run tremor gdelt pull` (hourly) |
 
 ## Log
 
@@ -30,3 +31,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:14 (Claude): #4 seed Events done: 12 Red Sea Events, each date checked against Wikipedia (3 unverifiable ones dropped).
 - 2026-11-19 00:15 (Claude): #5 event-study engine done (market model, AR/CAR, cross-sectional t-test, N>=8 rule, broadening, ETF start-date skips). On the 12 seeds every result is 'insufficient' (N=5-6), as expected.
 - 2026-11-19 00:17 (Claude): #6 first charts done (docs/charts/, light+dark), in README.
+- 2026-11-19 00:19 (Claude): #8 GDELT ingestion done. Real-data check: Galaxy Leader hijack found on 2023-11-19 (code 181). Red Sea box tightened (taxonomy v2) after Sudan/Gaza noise. Full backfill starts next (background, log: data/backfill.log).

@@ -1,6 +1,6 @@
 # TREMOR Event-type taxonomy and Regions (ADR-0011, ADR-0019).
 # Bump `version` whenever a definition changes: Eval set labels and Comparables depend on it.
-version = 1
+version = 2
 
 # Each Event type has:
 #   definition : one line a non-expert can label against
@@ -124,8 +124,10 @@ first_slice = false
 [[regions]]
 id = "red_sea"
 name = "Red Sea / Bab-el-Mandeb"
-lat = [10.5, 30.5]
-lon = [32.0, 51.5]
+# Southern Red Sea, Bab-el-Mandeb, Gulf of Aden and Yemen. Kept off Sudan's interior and Sinai/Gaza,
+# which flooded the wider box with unrelated conflict news (checked on real GDELT data, v2).
+lat = [10.5, 22.5]
+lon = [37.5, 51.5]
 first_slice = true
 
 [[regions]]
