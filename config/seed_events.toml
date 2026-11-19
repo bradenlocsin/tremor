@@ -1,0 +1,111 @@
+# Hand-entered Red Sea seed Events (#4, ADR-0021). Each date was checked against the cited
+# Wikipedia article on 2026-11-19. They let the quant core run before the GDELT pipeline exists.
+# Wikipedia text is CC BY-SA (commercial use allowed with attribution), so License tag = commercial.
+
+[[events]]
+date = "2015-03-26"
+event_type = "military_strike"
+title = "Saudi-led coalition begins air strikes in Yemen (Operation Decisive Storm)"
+actors = ["Saudi Arabia", "Saudi-led coalition", "Houthis"]
+lat = 15.35
+lon = 44.21
+source_url = "https://en.wikipedia.org/wiki/Saudi_Arabian-led_intervention_in_Yemen"
+
+[[events]]
+date = "2016-10-13"
+event_type = "military_strike"
+title = "US Tomahawk strikes on Houthi radar sites after missiles fired at USS Mason"
+actors = ["United States", "Houthis"]
+lat = 13.5
+lon = 43.2
+source_url = "https://en.wikipedia.org/wiki/Tomahawk_missile"
+
+[[events]]
+date = "2018-06-13"
+event_type = "military_strike"
+title = "Saudi/UAE-led coalition launches the assault on Hodeidah port"
+actors = ["United Arab Emirates", "Saudi Arabia", "Houthis"]
+lat = 14.80
+lon = 42.95
+source_url = "https://en.wikipedia.org/wiki/Battle_of_Hodeidah"
+
+[[events]]
+date = "2023-11-19"
+event_type = "shipping_attack"
+title = "Houthis hijack the cargo ship Galaxy Leader in the Red Sea"
+actors = ["Houthis"]
+lat = 15.0
+lon = 42.3
+source_url = "https://en.wikipedia.org/wiki/Galaxy_Leader_hijacking"
+
+[[events]]
+date = "2023-12-15"
+event_type = "chokepoint_disruption"
+title = "Maersk and other carriers pause Red Sea transits after Houthi attacks"
+actors = ["Maersk", "Hapag-Lloyd", "Houthis"]
+lat = 12.6
+lon = 43.3
+source_url = "https://en.wikipedia.org/wiki/Red_Sea_crisis"
+
+[[events]]
+date = "2024-01-12"
+event_type = "military_strike"
+title = "US and UK begin air and missile strikes on Houthi targets (Operation Poseidon Archer)"
+actors = ["United States", "United Kingdom", "Houthis"]
+lat = 15.35
+lon = 44.21
+source_url = "https://en.wikipedia.org/wiki/Red_Sea_crisis"
+
+[[events]]
+date = "2024-01-26"
+event_type = "shipping_attack"
+title = "Houthi missile strikes the tanker Marlin Luanda in the Gulf of Aden"
+actors = ["Houthis", "Trafigura"]
+lat = 13.0
+lon = 46.5
+source_url = "https://en.wikipedia.org/wiki/Marlin_Luanda_missile_strike"
+
+[[events]]
+date = "2024-02-18"
+event_type = "shipping_attack"
+title = "Houthi missile strikes the bulk carrier Rubymar, which later sinks"
+actors = ["Houthis"]
+lat = 13.0
+lon = 43.2
+source_url = "https://en.wikipedia.org/wiki/Sinking_of_the_MV_Rubymar"
+
+[[events]]
+date = "2024-03-06"
+event_type = "shipping_attack"
+title = "Houthi missile hits True Confidence, killing crew members (first fatalities)"
+actors = ["Houthis"]
+lat = 12.9
+lon = 45.0
+source_url = "https://en.wikipedia.org/wiki/MV_True_Confidence"
+
+[[events]]
+date = "2024-06-12"
+event_type = "shipping_attack"
+title = "Houthi drone boat and missile attack on the bulk carrier Tutor, which later sinks"
+actors = ["Houthis"]
+lat = 14.5
+lon = 42.0
+source_url = "https://en.wikipedia.org/wiki/MV_Tutor"
+
+[[events]]
+date = "2024-08-21"
+event_type = "shipping_attack"
+title = "Houthis attack the Greek oil tanker Sounion near the mouth of the Red Sea"
+actors = ["Houthis", "Delta Tankers"]
+lat = 14.0
+lon = 42.5
+source_url = "https://en.wikipedia.org/wiki/Attacks_on_the_Sounion"
+
+[[events]]
+date = "2025-03-15"
+event_type = "military_strike"
+title = "US launches large-scale strikes on Houthi targets (Operation Rough Rider)"
+actors = ["United States", "Houthis"]
+lat = 15.35
+lon = 44.21
+source_url = "https://en.wikipedia.org/wiki/Operation_Rough_Rider"
