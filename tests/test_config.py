@@ -14,3 +14,8 @@ def test_storage_creates_schema(tmp_path):
     conn = connect(tmp_path / "t.sqlite")
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"prices", "assets_meta", "events"} <= tables
+
+
+def test_tremor_db_env_overrides_storage(monkeypatch, tmp_path):
+    monkeypatch.setenv("TREMOR_DB", str(tmp_path / "x.sqlite"))
+    assert load_config().storage_path == tmp_path / "x.sqlite"

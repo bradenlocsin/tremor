@@ -62,6 +62,7 @@ def update_prices(
     for ticker in tickers:
         last = last_cached_date(conn, ticker)
         start = last + timedelta(days=1) if last else history_start
+        conn.commit()  # end any open transaction before the (slow) network call
         series = source.fetch(ticker, start)
         series = series[[d > last for d in series.index]] if last else series
         rows = [
@@ -77,7 +78,7 @@ def update_prices(
                 "INSERT OR REPLACE INTO assets_meta VALUES (?, ?)", (ticker, first)
             )
         added[ticker] = len(rows)
-    conn.commit()
+        conn.commit()  # short write transactions: never hold the lock across a download
     return added
 
 

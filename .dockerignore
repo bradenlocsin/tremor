@@ -1,0 +1,11 @@
+.git
+.venv
+data
+gods-eye-view
+worldmonitor
+.handoff
+.claude
+.agents
+__pycache__
+*.pyc
+docs/charts

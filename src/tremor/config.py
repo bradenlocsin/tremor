@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,7 +51,8 @@ class Config:
 def load_config(path: Path | str = DEFAULT_CONFIG) -> Config:
     raw = tomllib.loads(Path(path).read_text())
     es = raw["event_study"]
-    storage = Path(raw["storage"]["path"])
+    # TREMOR_DB overrides the configured path (the deployed container keeps it on a volume).
+    storage = Path(os.environ.get("TREMOR_DB") or raw["storage"]["path"])
     if not storage.is_absolute():
         storage = REPO_ROOT / storage
     return Config(

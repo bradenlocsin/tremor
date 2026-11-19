@@ -1,0 +1,25 @@
+# Fly.io config for TREMOR (ADR-0016). See docs/deploy.md.
+# The app name must be globally unique on Fly; change it if "tremor" is taken.
+app = "tremor"
+primary_region = "iad"
+
+[build]
+
+[env]
+  TREMOR_DB = "/data/tremor.sqlite"
+
+[[mounts]]
+  source = "tremor_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  # Always on: the scheduler runs inside this machine.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
