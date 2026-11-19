@@ -1,0 +1,161 @@
+"""Keep the Codex history backfill going across Codex usage windows (ADR-0027).
+
+Runs `tremor refine --backfill --engine codex` until no Candidates are left. When Codex hits its
+usage limit (the refine command exits 75), the supervisor waits, checking Codex every 15 minutes
+so it resumes as soon as the limit clears, including right after the author applies a manual
+reset. It sends a phone alert when the limit looks like the weekly one (the reset is more than
+6 hours away), and when the backfill finishes or stalls.
+
+Alerts: iMessage to TREMOR_NOTIFY_IMESSAGE (needs Messages automation permission, granted once),
+and/or ntfy to TREMOR_NOTIFY_NTFY_TOPIC. Both are read from the gitignored .env.
+
+Run (from the repo root):  nohup caffeinate -i uv run python scripts/codex_supervisor.py &
+Stop:                      touch data/codex-supervisor.stop
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+REPO = Path(__file__).resolve().parents[1]
+LOG = REPO / "data" / "codex-supervisor.log"
+STOP = REPO / "data" / "codex-supervisor.stop"
+REFINE = ["uv", "run", "tremor", "refine", "--backfill", "--engine", "codex", "--workers", "6"]
+POLL = 15 * 60
+WEEKLY_AFTER = timedelta(hours=6)
+
+sys.path.insert(0, str(REPO / "src"))
+from tremor.config import load_config, load_dotenv  # noqa: E402
+
+
+def log(msg: str) -> None:
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}"
+    print(line, flush=True)
+    with LOG.open("a") as f:
+        f.write(line + "\n")
+
+
+def notify(msg: str) -> None:
+    sent = False
+    who = os.environ.get("TREMOR_NOTIFY_IMESSAGE")
+    if who:
+        script = ('on run argv\ntell application "Messages"\n'
+                  'set s to 1st account whose service type = iMessage\n'
+                  'send (item 1 of argv) to participant (item 2 of argv) of s\n'
+                  'end tell\nend run')
+        try:
+            r = subprocess.run(["osascript", "-e", script, msg, who], capture_output=True,
+                               text=True, timeout=150)
+            sent = r.returncode == 0
+            if not sent:
+                log(f"iMessage failed: {r.stderr.strip()[:200]}")
+        except subprocess.TimeoutExpired:
+            log("iMessage timed out (Messages automation permission not granted yet?)")
+    topic = os.environ.get("TREMOR_NOTIFY_NTFY_TOPIC")
+    if topic:
+        try:
+            urlopen(Request(f"https://ntfy.sh/{topic}", data=msg.encode(), method="POST",
+                            headers={"Title": "TREMOR"}), timeout=30)
+            sent = True
+        except OSError as e:
+            log(f"ntfy failed: {e}")
+    log(f"alert {'sent' if sent else 'NOT sent'}: {msg}")
+
+
+def remaining() -> int:
+    from tremor.refine import pick_candidates
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    conn = connect(load_config().storage_path)
+    tax = default_taxonomy().first_slice()
+    n = len(pick_candidates(conn, "red_sea", 3, taxonomy_version=tax.version))
+    conn.close()
+    return n
+
+
+def codex_ok() -> bool:
+    r = subprocess.run(["codex", "exec", "-m", "gpt-6.2-sol", "-s", "read-only", "--ephemeral",
+                        "--skip-git-repo-check", "-C", "/tmp", "-"], input="Reply with: ok",
+                       capture_output=True, text=True, timeout=300)
+    return r.returncode == 0
+
+
+def reset_time(message: str, now: datetime) -> datetime | None:
+    """Parse 'try again at 2:44 PM' or 'try again on Nov 24th, 2026 9:00 AM' style messages."""
+    t = re.search(r"(\d{1,2}):(\d{2})\s*([AP]M)", message, re.I)
+    if not t:
+        return None
+    hour = int(t.group(1)) % 12 + (12 if t.group(3).upper() == "PM" else 0)
+    when = now.replace(hour=hour, minute=int(t.group(2)), second=0, microsecond=0)
+    d = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})",
+                  message)
+    if d:
+        month = datetime.strptime(d.group(1), "%b").month
+        when = when.replace(month=month, day=int(d.group(2)))
+        if when < now - timedelta(days=1):
+            when = when.replace(year=when.year + 1)
+    elif when <= now:
+        when += timedelta(days=1)
+    return when
+
+
+def main() -> int:
+    load_dotenv()
+    os.chdir(REPO)
+    log(f"supervisor started (pid {os.getpid()}); {remaining()} Candidates to refine")
+    stalls = 0
+    weekly_alerted = False
+    while not STOP.exists():
+        before = remaining()
+        if before == 0:
+            notify("TREMOR: the Codex history refinement is finished. Every Candidate is "
+                   "refined; next step is `tremor recommend` and `tremor backtest`.")
+            return 0
+        log(f"starting refine ({before} left)")
+        with LOG.open("a") as f:
+            proc = subprocess.run(REFINE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  text=True)
+            f.write(proc.stdout)
+        after = remaining()
+        log(f"refine exited {proc.returncode}; {before - after} done this run, {after} left")
+        if proc.returncode == 75:
+            stalls = 0
+            msg = next((x for x in proc.stdout.splitlines() if x.startswith("CODEX_LIMIT")), "")
+            now = datetime.now()
+            when = reset_time(msg, now)
+            log(f"usage limit: {msg} (resets {when or 'unknown'})")
+            if when and when - now > WEEKLY_AFTER and not weekly_alerted:
+                notify(f"TREMOR: Codex hit its WEEKLY limit (resets {when:%a %b %-d %-I:%M %p}). "
+                       f"{after} articles left. If you want it to keep going now, use one of "
+                       "your weekly resets; the backfill resumes within 15 minutes.")
+                weekly_alerted = True
+            while not STOP.exists():
+                time.sleep(POLL)
+                if codex_ok():
+                    log("Codex is available again")
+                    weekly_alerted = False
+                    break
+            continue
+        if before - after == 0:
+            stalls += 1
+            if stalls >= 3:
+                notify(f"TREMOR: the Codex backfill stopped making progress ({after} left, last "
+                       f"exit {proc.returncode}). Check data/codex-supervisor.log.")
+                return 1
+            time.sleep(60)
+        else:
+            stalls = 0
+    log("stop file found; exiting")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

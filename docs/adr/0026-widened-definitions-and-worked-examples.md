@@ -33,3 +33,14 @@ Sonnet found more real Events (82% recall vs. 59%), but at roughly 20 times Haik
 - Events refined under v2 are discarded and the history is refined again under v3, at a cost of about $1.
 - The Eval set is relabeled by the panel under v3 before scoring.
 - Fine-tuning stays out of scope: it would need far more labels than the project has, and it isn't self-serve for current Claude models.
+
+## Update (same day): the worked examples were removed
+
+A Codex code review found that one teaching example was a syndicated copy (a different URL, the same publisher story ID) of a scored test item. The earlier gain (recall 61% → 75%) was measured with that leak. After excluding syndicated copies and rerunning Haiku repeatedly on the test split:
+
+| Haiku, taxonomy v3 | Kept-Event recall | Kept-Event precision | Event type |
+|---|---|---|---|
+| No examples (2 runs) | 61%, 61% | 94%, 94% | 82%, 82% |
+| Leak-free examples (3 runs) | 50%, 61%, 64% | 88–90% | 55–73% |
+
+The leak-free examples gave no reliable gain and slightly hurt precision and type accuracy, so `config/refine_examples.json` was removed. The mechanism stays: `tremor eval examples` can rebuild the file, and the scored split guards against leakage. The widened definitions (v3) are what actually improved precision, from 56% to 94%.

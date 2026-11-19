@@ -121,6 +121,9 @@ def cmd_refine(args: argparse.Namespace) -> int:
         workers=args.workers or workers,
     )
     print(stats)
+    if "stopped" in stats:  # e.g. the Codex usage limit; exit 75 (EX_TEMPFAIL) so a supervisor
+        print(f"CODEX_LIMIT: {stats['stopped']}")  # can wait for the reset and rerun
+        return 75
     return 0
 
 
