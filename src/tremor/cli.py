@@ -102,8 +102,13 @@ def cmd_refine(args: argparse.Namespace) -> int:
     cfg = load_config()
     conn = connect(cfg.storage_path)
     gdelt.ensure_schema(conn)
+    workers = 4
     if args.fake:
         refiner = FakeRefiner()
+    elif args.engine == "codex":
+        from tremor.codex_refine import CodexRefiner
+
+        refiner, workers = CodexRefiner(), args.workers or 6
     elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         refiner = ClaudeRefiner(cfg.refinement_model)
     else:
@@ -113,6 +118,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         conn, cfg, default_taxonomy().first_slice(), refiner,
         purpose="backfill" if args.backfill else "refine",
         per_day_per_type=args.per_day, since=args.since, limit=args.limit,
+        workers=args.workers or workers,
     )
     print(stats)
     return 0
@@ -283,6 +289,9 @@ def build_parser() -> argparse.ArgumentParser:
     rf.add_argument("--per-day", type=int, default=3, help="most-covered URLs per day and type")
     rf.add_argument("--since", default=None, help="only Candidates on/after this ISO date")
     rf.add_argument("--limit", type=int, default=None)
+    rf.add_argument("--engine", choices=["claude", "codex"], default="claude",
+                    help="codex: refine with Codex CLI (one-off backfills, ADR-0027)")
+    rf.add_argument("--workers", type=int, default=None, help="parallel calls / Codex sessions")
     rf.set_defaults(func=cmd_refine)
     rc = sub.add_parser("recommend", help="Recommendations for the latest Episode starts")
     rc.add_argument("--latest", type=int, default=3)

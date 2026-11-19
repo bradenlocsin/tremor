@@ -467,19 +467,39 @@ def refine_candidates(
         except Exception as e:  # noqa: BLE001
             return article, e, None
 
+    def work_batch(pairs: list[tuple[dict, Article]]):
+        """Batched refiners (Codex, ADR-0027): one call refines several articles."""
+        try:
+            return refiner.refine_batch(system, [user_prompt(c, a) for c, a in pairs])
+        except Exception as e:  # noqa: BLE001
+            return [(e, None)] * len(pairs)
+
+    batch = getattr(refiner, "batch_size", 1)
+    step = workers * batch
     todo = pick_candidates(conn, region, per_day_per_type, since, limit)
     done = 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        for start in range(0, len(todo), workers):
-            chunk = todo[start:start + workers]
+    with ThreadPoolExecutor(max_workers=workers) as pool, \
+            ThreadPoolExecutor(max_workers=16) as fetchers:
+        for start in range(0, len(todo), step):
+            chunk = todo[start:start + step]
             # Budget is checked per chunk; the overshoot is at most one chunk of calls.
             if spent(conn, purpose, None if purpose == "backfill" else today) >= cap:
                 stats["skipped_budget"] += len(todo) - start
                 break
-            for cand, (article, result, usage) in zip(chunk, pool.map(work, chunk)):
+            if batch == 1:
+                results = list(pool.map(work, chunk))
+            else:
+                arts = list(fetchers.map(
+                    lambda c: fetch_article(c["source_url"], c["event_date"], fetch=fetch), chunk))
+                pairs = list(zip(chunk, arts))
+                groups = [pairs[i:i + batch] for i in range(0, len(pairs), batch)]
+                results = []
+                for g, out in zip(groups, pool.map(work_batch, groups)):
+                    results += [(a, r, u) for (_, a), (r, u) in zip(g, out)]
+            for cand, (article, result, usage) in zip(chunk, results):
                 _store(conn, cand, article, result, usage, stats)
             done += len(chunk)
-            if done % 500 < workers:
+            if done % 500 < step:
                 log(f"  {done}/{len(todo)} refined, ${spent(conn, purpose):.2f} spent ({purpose})")
     return stats
 
