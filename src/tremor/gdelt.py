@@ -96,6 +96,10 @@ class Candidate:
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(candidates)")}
+    if "refined_tax" not in cols:  # taxonomy version a Candidate was last refined under
+        conn.execute("ALTER TABLE candidates ADD COLUMN refined_tax INTEGER")
+        conn.commit()
 
 
 def _f(v: str) -> float | None:

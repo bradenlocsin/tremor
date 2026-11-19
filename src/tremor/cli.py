@@ -219,8 +219,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
         evalset.ensure_schema(conn)
         print("fetching Eval set articles…")
         items = panel.gather(conn)
+        conn.executemany("UPDATE eval_items SET headline = ? WHERE source_url = ?",
+                         [(it["headline"], it["source_url"]) for it in items])
+        conn.commit()
         print(f"running the Codex panel ({model}) on {len(items)} items…")
         for lab in panel.run_panel(tax, items, codex=lambda p, s: panel.run_codex(p, s, model)):
+            if evalset.has_author_label(conn, lab["source_url"]):
+                continue  # hand labels always win over the panel (ADR-0025)
             evalset.save_label(conn, lab["source_url"], lab["is_real"], lab["event_type"],
                                lab["region"], duplicate=False, note=lab["note"],
                                labeled_by=f"panel:{model}")

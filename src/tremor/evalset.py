@@ -74,6 +74,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         if col not in run_cols:
             conn.execute(f"ALTER TABLE eval_runs ADD COLUMN {col} REAL")
     item_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_items)")}
+    if "headline" not in item_cols:  # stored by the panel's article fetch, for story matching
+        conn.execute("ALTER TABLE eval_items ADD COLUMN headline TEXT")
     if "split" not in item_cols:  # 'test' is scored; 'teach' supplies worked examples (ADR-0026)
         conn.execute("ALTER TABLE eval_items ADD COLUMN split TEXT NOT NULL DEFAULT 'test'")
     pred_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_predictions)")}
@@ -139,6 +141,12 @@ def progress(conn: sqlite3.Connection) -> tuple[int, int]:
     return done, total
 
 
+def has_author_label(conn: sqlite3.Connection, source_url: str) -> bool:
+    row = conn.execute("SELECT labeled_by FROM eval_labels WHERE source_url = ?",
+                       (source_url,)).fetchone()
+    return bool(row) and row[0] == "author"
+
+
 def save_label(
     conn: sqlite3.Connection, source_url: str, is_real: bool | None, event_type: str,
     region: str, duplicate: bool, note: str = "", labeled_by: str = "author",
@@ -183,6 +191,7 @@ def score(
         "SELECT i.candidate, l.is_real_event, l.event_type, l.region FROM eval_items i"
         " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0 AND i.split = 'test'"
     ).fetchall()
+    valid_types = {t.id for t in tax.event_types}
     real_hits = type_hits = type_total = region_hits = noise_hits = noise_total = 0
     kept = kept_right = should = should_kept = 0
     kwargs = {"fetch": fetch} if fetch else {}
@@ -191,7 +200,8 @@ def score(
         article = fetch_article(cand["source_url"], cand["event_date"], **kwargs)
         result, usage = refiner.refine(system, user_prompt(cand, article))
         record_spend(conn, usage, "eval")
-        pred_real = bool(result.is_real_event and result.event_type != "none")
+        # Same keep predicate as refinement: real, a taxonomy id, and (for keeping) in Region.
+        pred_real = bool(result.is_real_event and result.event_type in valid_types)
         real_hits += pred_real == bool(is_real)
         region_hits += bool(result.in_region) == (label_region == cand["region"])
         keep = pred_real and bool(result.in_region)
@@ -199,7 +209,7 @@ def score(
         kept += keep
         kept_right += keep and should_keep and result.event_type == label_type
         should += should_keep
-        should_kept += keep and should_keep
+        should_kept += keep and should_keep and result.event_type == label_type
         if is_real:
             type_total += 1
             type_hits += result.event_type == label_type

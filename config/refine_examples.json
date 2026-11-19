@@ -1,30 +1,30 @@
 [
   {
-    "place": "Yemen",
-    "summary": "Reuters quotes Stolt Tankers saying pirates fired on and damaged the Stolt Apal, but the location given, 75 nautical miles off Yemen’s coast, is too broad to establish that the vessel was inside the region.",
-    "why": "The tanker manager confirms that pirates fired on and damaged the Stolt Apal. The reported distance of 75 nautical miles off Yemen gives too little information to place the attack in the defined waters.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
-    "place": "Jazan, Jizan, Saudi Arabia",
-    "summary": "News.com.au reports that Houthi rebels seized the UAE-flagged Rwabee in the Red Sea off Yemen’s Hodeida province late on January 2.",
-    "why": "Both sides acknowledge that the Houthis seized the Rwabee late January 2 in the Red Sea off Hodeida. Their dispute concerns what the ship carried.",
+    "place": "Red Sea, Djibouti (general), Djibouti",
+    "summary": "IBTimes reports that the French frigate Languedoc intercepted two drones flying directly toward it in the Red Sea.",
+    "why": "French officials reported that two drones flew directly at the frigate Languedoc in the Red Sea and were intercepted. The definition covers intercepted attacks aimed at naval vessels.",
     "is_real_event": true,
     "event_type": "shipping_attack",
     "in_region": true,
     "keep": true
   },
   {
-    "place": "Arhab, A? ?ali, Yemen",
-    "summary": "The Los Angeles Times reports that a Saudi-led coalition airstrike hit a hotel in Arhab, within the defined coordinates, on August 23.",
-    "why": "The article reports a Saudi-led coalition airstrike on a hotel in Arhab, about 20 miles north of Sana, on August 23. The location falls within the supplied coordinate bounds.",
-    "is_real_event": true,
-    "event_type": "military_strike",
-    "in_region": true,
-    "keep": true
+    "place": "Sanaa, Sana', Yemen",
+    "summary": "The article text is missing, and the headline “post” and supplied fields give too little information to identify a specific strike in Sanaa.",
+    "why": "The article text is missing. The headline “post” and the supplied metadata give too little information to identify a specific strike.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
+    "keep": false
+  },
+  {
+    "place": "Marib, Ma'rib, Yemen",
+    "summary": "Security Council Report previews the April meeting on Yemen and recounts earlier developments, including U.S. airstrikes on March 15 and 16.",
+    "why": "The monthly forecast previews an upcoming Security Council meeting and recaps March hostilities, including the March 15–16 U.S. strikes.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
+    "keep": false
   },
   {
     "place": "Red Sea, Djibouti (general), Djibouti",
@@ -36,36 +36,9 @@
     "keep": true
   },
   {
-    "place": "Red Sea, Djibouti (general), Djibouti",
-    "summary": "Sky News reports that an external impact caused an explosion and damaged the hull of the tanker BW Rhine off Jeddah.",
-    "why": "The tanker operator reported that an external impact caused the explosion and hull damage aboard the BW Rhine off Jeddah. The attacker remained unidentified.",
-    "is_real_event": true,
-    "event_type": "shipping_attack",
-    "in_region": true,
-    "keep": true
-  },
-  {
-    "place": "Al-Jouf, Abyan, Yemen",
-    "summary": "RiyadhVision cites Yemeni military sources saying coalition aircraft destroyed a weapons shipment after it had been stored on Kamran Island off Yemen’s Red Sea coast.",
-    "why": "Coalition aircraft destroyed the weapons after they had been unloaded and stored on Kamran Island in the Red Sea. Fishing boats had transported the shipment there.",
-    "is_real_event": true,
-    "event_type": "military_strike",
-    "in_region": true,
-    "keep": true
-  },
-  {
-    "place": "Taizz, Taizz, Yemen",
-    "summary": "The article focuses on water restrictions under the longstanding siege of Taizz and refers to Red Sea ship attacks only in general terms.",
-    "why": "The article discusses water restrictions under the longstanding siege of Taizz and gives no specific Red Sea ship attack or new maritime transit restriction.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
-    "place": "Red Sea, Djibouti (general), Djibouti",
-    "summary": "i24NEWS reports that a December 3 drone and missile attack targeted two vessels in the Red Sea and hit one.",
-    "why": "The article reports that vessels came under attack on December 3 in the Red Sea, with one reportedly hit. The Pentagon statement supports the occurrence of an attack even though Houthi responsibility remained unconfirmed in the article.",
+    "place": "Yemen",
+    "summary": "A maritime security firm reported that a drone attack damaged a British-owned cargo ship off Yemen in the Red Sea.",
+    "why": "The excerpt reports that a drone attack damaged a British-owned cargo ship and places the incident in the Red Sea off Yemen.",
     "is_real_event": true,
     "event_type": "shipping_attack",
     "in_region": true,
@@ -81,57 +54,21 @@
     "keep": false
   },
   {
-    "place": "Yemen",
-    "summary": "Defense One reports Gen. Joseph Votel’s defense of existing U.S.–Saudi military ties and refers to the Yemen air war as background.",
-    "why": "Votel’s interview defends existing U.S.–Saudi military ties. The Yemen air war is background, and the article identifies no specific strike near the given date.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
-    "place": "Yemen",
-    "summary": "CNN reports a contemporaneous Justice Department forfeiture announcement and dates the underlying Arabian Sea weapons seizures to November 2019 and February 2020.",
-    "why": "The Justice Department announced the forfeiture around December 8. The underlying Arabian Sea weapons seizures occurred in 2019 and 2020.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
-    "place": "Hajdah, Taizz, Yemen",
-    "summary": "Asharq Al-Awsat’s May 10 article summarizes a monitoring report on violations across Taiz during April, including earlier shelling of residential neighborhoods.",
-    "why": "The May 10 story summarizes a monitoring report on violations throughout April. The shelling appears among the incidents tallied for that earlier period.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
     "place": "Red Sea, Djibouti (general), Djibouti",
-    "summary": "IBTimes reports that the French frigate Languedoc intercepted two drones flying directly toward it in the Red Sea.",
-    "why": "French officials reported that two drones flew directly at the frigate Languedoc in the Red Sea and were intercepted. The definition covers intercepted attacks aimed at naval vessels.",
+    "summary": "i24NEWS reports that a December 3 drone and missile attack targeted two vessels in the Red Sea and hit one.",
+    "why": "The article reports that vessels came under attack on December 3 in the Red Sea, with one reportedly hit. The Pentagon statement supports the occurrence of an attack even though Houthi responsibility remained unconfirmed in the article.",
     "is_real_event": true,
     "event_type": "shipping_attack",
     "in_region": true,
     "keep": true
   },
   {
-    "place": "Sanaa, Sana', Yemen",
-    "summary": "The Swissinfo headline reports that the U.N. announced Yemen talks and describes the ship inspection as a future action.",
-    "why": "The headline establishes that the U.N. announced Yemen talks. With the article text missing, the inspection remains prospective and the announcement’s location is unspecified.",
+    "place": "Mecca, Makkah, Saudi Arabia",
+    "summary": "Gulf Daily News reports that a fire started in a pile of waste that morning and spread to a hotel in Mecca, inside the defined coordinate bounds.",
+    "why": "The article reports a same-day hotel fire that officials traced to burning waste. Mecca falls inside the supplied coordinate bounds, and the fire falls outside the listed event types.",
     "is_real_event": false,
     "event_type": "none",
-    "in_region": false,
-    "keep": false
-  },
-  {
-    "place": "Sanaa, Sana', Yemen",
-    "summary": "The article text is missing, and the headline “post” and supplied fields give too little information to identify a specific strike in Sanaa.",
-    "why": "The article text is missing. The headline “post” and the supplied metadata give too little information to identify a specific strike.",
-    "is_real_event": false,
-    "event_type": "none",
-    "in_region": false,
+    "in_region": true,
     "keep": false
   },
   {
@@ -141,6 +78,69 @@
     "is_real_event": false,
     "event_type": "none",
     "in_region": true,
+    "keep": false
+  },
+  {
+    "place": "Red Sea, Djibouti (general), Djibouti",
+    "summary": "Sky News reports that an external impact caused an explosion and damaged the hull of the tanker BW Rhine off Jeddah.",
+    "why": "The tanker operator reported that an external impact caused the explosion and hull damage aboard the BW Rhine off Jeddah. The attacker remained unidentified.",
+    "is_real_event": true,
+    "event_type": "shipping_attack",
+    "in_region": true,
+    "keep": true
+  },
+  {
+    "place": "Yemen",
+    "summary": "Zimbabwe Today’s year-end outlook reviews earlier developments in Yemen, including the Hodeidah ceasefire agreement, and warns of a possible famine in 2019.",
+    "why": "The year-end outlook revisits the earlier Hodeidah ceasefire agreement and forecasts famine risk in 2019. It reports no new incident around December 29.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
+    "keep": false
+  },
+  {
+    "place": "Taizz, Taizz, Yemen",
+    "summary": "The article focuses on water restrictions under the longstanding siege of Taizz and refers to Red Sea ship attacks only in general terms.",
+    "why": "The article discusses water restrictions under the longstanding siege of Taizz and gives no specific Red Sea ship attack or new maritime transit restriction.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
+    "keep": false
+  },
+  {
+    "place": "Al-Jouf, Abyan, Yemen",
+    "summary": "RiyadhVision cites Yemeni military sources saying coalition aircraft destroyed a weapons shipment after it had been stored on Kamran Island off Yemen’s Red Sea coast.",
+    "why": "Coalition aircraft destroyed the weapons after they had been unloaded and stored on Kamran Island in the Red Sea. Fishing boats had transported the shipment there.",
+    "is_real_event": true,
+    "event_type": "military_strike",
+    "in_region": true,
+    "keep": true
+  },
+  {
+    "place": "Arhab, A? ?ali, Yemen",
+    "summary": "The Los Angeles Times reports that a Saudi-led coalition airstrike hit a hotel in Arhab, within the defined coordinates, on August 23.",
+    "why": "The article reports a Saudi-led coalition airstrike on a hotel in Arhab, about 20 miles north of Sana, on August 23. The location falls within the supplied coordinate bounds.",
+    "is_real_event": true,
+    "event_type": "military_strike",
+    "in_region": true,
+    "keep": true
+  },
+  {
+    "place": "Yemen",
+    "summary": "Defense One reports Gen. Joseph Votel’s defense of existing U.S.–Saudi military ties and refers to the Yemen air war as background.",
+    "why": "Votel’s interview defends existing U.S.–Saudi military ties. The Yemen air war is background, and the article identifies no specific strike near the given date.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
+    "keep": false
+  },
+  {
+    "place": "Sanaa, Sana', Yemen",
+    "summary": "The Swissinfo headline reports that the U.N. announced Yemen talks and describes the ship inspection as a future action.",
+    "why": "The headline establishes that the U.N. announced Yemen talks. With the article text missing, the inspection remains prospective and the announcement’s location is unspecified.",
+    "is_real_event": false,
+    "event_type": "none",
+    "in_region": false,
     "keep": false
   }
 ]

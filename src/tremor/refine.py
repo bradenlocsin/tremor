@@ -361,9 +361,17 @@ def record_spend(conn: sqlite3.Connection, usage: Usage, purpose: str) -> None:
 
 def pick_candidates(
     conn: sqlite3.Connection, region: str, per_day_per_type: int, since: str | None = None,
-    limit: int | None = None,
+    limit: int | None = None, taxonomy_version: int = 0,
 ) -> list[dict]:
-    """One row per unrefined source URL, keeping the most-covered URLs per day and type."""
+    """Source URLs to refine: the most-covered URLs per day and type that are new, or were last
+    refined under an older taxonomy version.
+
+    Ranking covers every URL regardless of status, so the top-N per day and type is fixed:
+    rerunning a backfill retries failures instead of reaching further down the list.
+    """
+    from tremor.gdelt import ensure_schema
+
+    ensure_schema(conn)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         f"""
@@ -371,9 +379,10 @@ def pick_candidates(
           SELECT source_url, MIN(event_date) AS event_date, candidate_types,
                  MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
                  AVG(lat) AS lat, AVG(lon) AS lon,
-                 SUM(num_articles) AS coverage
+                 SUM(num_articles) AS coverage,
+                 MAX(status = 'new' OR COALESCE(refined_tax, 0) < ?) AS todo
           FROM candidates
-          WHERE status = 'new' AND region = ? AND (? IS NULL OR event_date >= ?)
+          WHERE region = ? AND (? IS NULL OR event_date >= ?)
             AND {FRESH_SQL}
           GROUP BY source_url
         ), ranked AS (
@@ -381,9 +390,9 @@ def pick_candidates(
             PARTITION BY event_date, candidate_types ORDER BY coverage DESC) AS rk
           FROM urls
         )
-        SELECT * FROM ranked WHERE rk <= ? ORDER BY event_date DESC, coverage DESC
+        SELECT * FROM ranked WHERE rk <= ? AND todo = 1 ORDER BY event_date DESC, coverage DESC
         """,
-        (region, since, since, per_day_per_type),
+        (taxonomy_version, region, since, since, per_day_per_type),
     ).fetchall()
     conn.row_factory = None
     out = [dict(r) for r in rows]
@@ -454,14 +463,25 @@ def refine_candidates(
         else:
             status = "rejected"
             stats["rejected"] += 1
+            # Reprocessing under a new taxonomy can reverse an earlier acceptance.
+            conn.execute("DELETE FROM events WHERE id = ?", (event_id_for(cand["source_url"]),))
         conn.execute(
-            "UPDATE candidates SET status = ? WHERE source_url = ?", (status, cand["source_url"])
+            "UPDATE candidates SET status = ?, refined_tax = ? WHERE source_url = ?",
+            (status, tax.version, cand["source_url"]),
         )
         conn.commit()
 
+    def safe_fetch(cand: dict) -> Article | Exception:
+        try:
+            return fetch_article(cand["source_url"], cand["event_date"], fetch=fetch)
+        except Exception as e:  # noqa: BLE001 - one bad URL must not abort its chunk
+            return e
+
     def work(cand: dict):
         """Network-only part (article fetch + LLM call); runs in worker threads."""
-        article = fetch_article(cand["source_url"], cand["event_date"], fetch=fetch)
+        article = safe_fetch(cand)
+        if isinstance(article, Exception):
+            return None, article, None
         try:
             return article, *refiner.refine(system, user_prompt(cand, article))
         except Exception as e:  # noqa: BLE001
@@ -476,26 +496,29 @@ def refine_candidates(
 
     batch = getattr(refiner, "batch_size", 1)
     step = workers * batch
-    todo = pick_candidates(conn, region, per_day_per_type, since, limit)
+    free = bool(getattr(refiner, "free", False))  # zero-cost engines ignore the paid cap
+    todo = pick_candidates(conn, region, per_day_per_type, since, limit, tax.version)
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool, \
             ThreadPoolExecutor(max_workers=16) as fetchers:
         for start in range(0, len(todo), step):
             chunk = todo[start:start + step]
             # Budget is checked per chunk; the overshoot is at most one chunk of calls.
-            if spent(conn, purpose, None if purpose == "backfill" else today) >= cap:
+            if not free and spent(conn, purpose, None if purpose == "backfill" else today) >= cap:
                 stats["skipped_budget"] += len(todo) - start
                 break
             if batch == 1:
                 results = list(pool.map(work, chunk))
             else:
-                arts = list(fetchers.map(
-                    lambda c: fetch_article(c["source_url"], c["event_date"], fetch=fetch), chunk))
-                pairs = list(zip(chunk, arts))
+                arts = list(fetchers.map(safe_fetch, chunk))
+                failed = {i: a for i, a in enumerate(arts) if isinstance(a, Exception)}
+                pairs = [(c, a) for i, (c, a) in enumerate(zip(chunk, arts)) if i not in failed]
                 groups = [pairs[i:i + batch] for i in range(0, len(pairs), batch)]
-                results = []
+                by_url = {}
                 for g, out in zip(groups, pool.map(work_batch, groups)):
-                    results += [(a, r, u) for (_, a), (r, u) in zip(g, out)]
+                    by_url.update({c["source_url"]: (a, r, u) for (c, a), (r, u) in zip(g, out)})
+                results = [(None, failed[i], None) if i in failed else by_url[c["source_url"]]
+                           for i, c in enumerate(chunk)]
             for cand, (article, result, usage) in zip(chunk, results):
                 _store(conn, cand, article, result, usage, stats)
             done += len(chunk)
