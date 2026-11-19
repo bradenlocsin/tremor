@@ -257,6 +257,11 @@ def pull_latest(conn: sqlite3.Connection, tax: Taxonomy, now: datetime | None = 
     return total
 
 
+# Candidates whose event date is far older than the day GDELT added them are retrospective
+# mentions ("in 2005, ..."), not new Events. Refinement and Eval sampling skip them.
+FRESH_SQL = "event_date >= date(substr(date_added,1,4)||'-'||substr(date_added,5,2)||'-'||substr(date_added,7,2), '-30 days')"
+
+
 def candidate_counts(conn: sqlite3.Connection) -> list[tuple]:
     return conn.execute(
         "SELECT region, candidate_types, COUNT(*), COUNT(DISTINCT source_url) FROM candidates"

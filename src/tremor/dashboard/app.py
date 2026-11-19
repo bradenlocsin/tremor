@@ -247,20 +247,85 @@ def track_record_page(bt: pd.DataFrame, live: pd.DataFrame):
                      width="stretch")
 
 
+@st.cache_data(ttl=3600, show_spinner="Fetching the article…")
+def article_for(url: str, day: str):
+    from tremor.refine import fetch_article
+
+    a = fetch_article(url, day)
+    return a.path, a.title, a.text
+
+
+def label_page(cfg):
+    from tremor import evalset
+    from tremor.refine import headline_from_url
+
+    tax = default_taxonomy().first_slice()
+    conn = connect(cfg.storage_path)
+    done, total = evalset.progress(conn)
+    st.subheader("Label the Eval set")
+    st.caption(
+        "Label each Candidate blind: decide from the article alone, not from what any model "
+        "thinks. Unsure is a fine answer; it marks a fuzzy taxonomy edge. ~1–2 minutes each."
+    )
+    if total == 0:
+        st.info("No Eval items yet. Run `uv run tremor eval sample` after the GDELT backfill.")
+        return
+    st.progress(done / total, text=f"{done} / {total} labeled")
+    item = evalset.next_unlabeled(conn)
+    if item is None:
+        st.success("All items are labeled. Score a model with `uv run tremor eval score`.")
+        return
+
+    path, title, text = article_for(item["source_url"], item["event_date"])
+    with st.container(border=True):
+        st.markdown(f"**{title or headline_from_url(item['source_url'])}**")
+        st.caption(f"GDELT date {item['event_date']} · location {item.get('place') or '?'} · "
+                   f"[open the article]({item['source_url']}) · text from: {path}")
+        st.write(text[:1500] + ("…" if len(text) > 1500 else "") if text
+                 else "_Article text unavailable: judge from the headline and link._")
+
+    with st.expander("Cheat sheet: Event type definitions"):
+        for t in tax.event_types:
+            st.markdown(f"**{t.name}** (`{t.id}`): {t.definition}  \n_e.g. {t.example}_")
+        st.markdown("**Not a real event:** opinion or analysis, explainers, anniversaries, "
+                    "'could/may' stories, roundups that only rehash earlier events.")
+
+    with st.form(f"label-{item['source_url']}"):
+        real = st.radio("1. Is this a real event?", ["Yes", "No (noise)", "Unsure"],
+                        horizontal=True, index=None)
+        etype = st.selectbox("2. Event type", ["none"] + [t.id for t in tax.event_types],
+                             format_func=lambda i: "none / not applicable" if i == "none"
+                             else tax.event_type(i).name)
+        region = st.selectbox("3. Region", [r.id for r in tax.regions] + ["none"],
+                              format_func=lambda i: "outside every Region" if i == "none"
+                              else tax.region(i).name)
+        dup = st.checkbox("4. Duplicate of an earlier story about the same event")
+        note = st.text_input("Note (optional)")
+        if st.form_submit_button("Save and next", type="primary"):
+            if real is None:
+                st.error("Answer question 1 first.")
+            else:
+                is_real = {"Yes": True, "No (noise)": False, "Unsure": None}[real]
+                evalset.save_label(conn, item["source_url"], is_real, etype, region, dup, note)
+                st.rerun()
+
+
 def main():
     gate()
     cfg, events, prices, bt, live, saved = load()
     st.sidebar.title("TREMOR")
     st.sidebar.caption("Tracking Risk Events & Market Outcome Reactions")
-    page = st.sidebar.radio("Page", ["Events", "Track record"], key="page")
+    page = st.sidebar.radio("Page", ["Events", "Track record", "Label (Eval set)"], key="page")
     st.sidebar.divider()
     st.sidebar.caption(DISCLAIMER)
     st.sidebar.caption("Prices: Yahoo Finance via yfinance (non-commercial). Events: GDELT, "
                        "refined by Claude.")
     if page == "Events":
         events_page(cfg, events, prices, saved)
-    else:
+    elif page == "Track record":
         track_record_page(bt, live)
+    else:
+        label_page(cfg)
 
 
 main()

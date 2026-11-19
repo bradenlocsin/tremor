@@ -177,6 +177,41 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(args: argparse.Namespace) -> int:
+    import os
+
+    from tremor import evalset, gdelt
+    from tremor.refine import SPEND_SCHEMA, ClaudeRefiner, FakeRefiner
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    gdelt.ensure_schema(conn)
+    conn.executescript(SPEND_SCHEMA)
+    if args.action == "sample":
+        print(f"added {evalset.sample(conn, 'red_sea', n=args.n)} items to the Eval set")
+    elif args.action == "score":
+        if args.fake:
+            refiner = FakeRefiner()
+        elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            refiner = ClaudeRefiner(args.model or cfg.refinement_model)
+        else:
+            print("No Anthropic credentials found (set ANTHROPIC_API_KEY). Use --fake to test.")
+            return 2
+        s = evalset.score(conn, cfg, default_taxonomy().first_slice(), refiner)
+
+        def fmt(x):
+            return "–" if x is None else f"{x:.0%}"
+
+        print(f"{s.run_id}: n={s.n}  real-vs-noise {fmt(s.real_accuracy)}  "
+              f"Event type {fmt(s.type_accuracy)}  Region {fmt(s.region_accuracy)}  "
+              f"noise rejected {fmt(s.noise_rejection)}")
+    done, total = evalset.progress(conn)
+    print(f"labeled {done} / {total}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -213,6 +248,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("backtest", help="back-test Recommendations without look-ahead").set_defaults(
         func=cmd_backtest
     )
+    ev = sub.add_parser("eval", help="the Eval set: sample items, then score a refiner")
+    ev.add_argument("action", choices=["sample", "score", "progress"])
+    ev.add_argument("--n", type=int, default=100)
+    ev.add_argument("--fake", action="store_true")
+    ev.add_argument("--model", default=None, help="override the refinement model to compare")
+    ev.set_defaults(func=cmd_eval)
     return parser
 
 

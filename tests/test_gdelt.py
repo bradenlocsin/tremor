@@ -11,6 +11,7 @@ def row(version: str, code: str, lat: float, lon: float, url: str, gid: str = "1
     c = COLUMNS[version]
     cells = [""] * c["n"]
     cells[0], cells[1] = gid, "20231119"
+    cells[c["added"]] = "20231119"
     cells[c["actor1"]], cells[c["actor2"]] = "HOUTHI", "SHIP"
     cells[c["code"]] = code
     cells[c["lat"]], cells[c["lon"]] = str(lat), str(lon)
@@ -63,3 +64,15 @@ def test_first_slice_filter_and_tight_red_sea_box():
     khartoum = row("v1", "190", 15.6, 32.5, "https://x.com/sudan-clashes")
     gaza = row("v1", "190", 31.5, 34.45, "https://x.com/gaza-strike")
     assert parse_rows("\n".join([khartoum, gaza]), "v1", fs) == []
+
+
+def test_stale_candidates_are_not_picked(tmp_path):
+    from tremor.refine import pick_candidates
+    conn = connect(tmp_path / "t.sqlite")
+    ensure_schema(conn)
+    fresh = row("v1", "181", 15.0, 42.3, "https://x.com/ship-seized-today", "1")
+    stale = row("v1", "181", 15.0, 42.3, "https://x.com/ship-seized-back-then", "2").replace(
+        "\t20231119\t", "\t20050101\t", 1)
+    save_candidates(conn, parse_rows(fresh + "\n" + stale, "v1", TAX), "v1/20231119")
+    urls = {c["source_url"] for c in pick_candidates(conn, "red_sea", 5)}
+    assert urls == {"https://x.com/ship-seized-today"}
