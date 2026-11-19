@@ -21,3 +21,5 @@ The author is newer to coding and will build largely with Claude Code while lear
 
 - The quant engine and pipeline must stay separate from the Streamlit UI, so the UI can later be swapped (e.g. for Next.js) without touching them.
 - Streamlit's look is limited, so the demo's polish comes from the event-study chart and copy.
+- **Storage settled as SQLite (WAL mode)** during #2: the scheduled jobs write while the Streamlit app reads, and DuckDB allows only one writing process at a time. Analysis happens in pandas, so DuckDB's speed isn't needed at this data size.
+- Pinned to Python 3.12 (via uv) for scientific-library compatibility.
