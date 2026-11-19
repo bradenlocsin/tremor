@@ -69,6 +69,10 @@ class Refinement(BaseModel):
         default=None, description="If not a real event: one short phrase why."
     )
     event_type: str = Field(description="One taxonomy Event type id, or 'none'.")
+    in_region: bool = Field(
+        description="True only if the event itself happened inside the Region described in the "
+        "instructions (GDELT's geocoding is often wrong; judge from the article)."
+    )
     title: str = Field(description="Neutral one-line headline of what happened.")
     occurred_on: str = Field(description="ISO date (YYYY-MM-DD) when it happened, per the article.")
     actors: list[str] = Field(description="States, groups, companies or leaders involved.")
@@ -136,6 +140,7 @@ class FakeRefiner:
                 is_real_event=not noise,
                 noise_reason="opinion/analysis" if noise else None,
                 event_type=types[0] if types and not noise else "none",
+                in_region=True,
                 title=meta["headline"] or "untitled",
                 occurred_on=meta["event_date"],
                 actors=[a for a in (meta["actor1"], meta["actor2"]) if a],
@@ -251,8 +256,10 @@ def fetch_article(url: str, day: str, fetch=_get) -> Article:
 # ---------------------------------------------------------------- prompts
 
 
-def system_prompt(tax: Taxonomy, tickers: list[str]) -> str:
+def system_prompt(tax: Taxonomy, tickers: list[str], region: str = "red_sea") -> str:
     types = "\n".join(f"- {t.id}: {t.definition} Example: {t.example}" for t in tax.event_types)
+    r = next(x for x in tax.regions if x.id == region)
+    where = f"{r.name} (latitude {r.lat[0]} to {r.lat[1]}, longitude {r.lon[0]} to {r.lon[1]})"
     return f"""You turn news articles into structured geopolitical Events for a market-analysis tool.
 
 Decide whether the article reports a specific event that actually happened, and if so classify it.
@@ -261,6 +268,10 @@ outcomes, and do not infer facts the article doesn't state.
 
 Event types (use exactly one id, or "none" when no type fits):
 {types}
+
+Region: {where}. Set in_region true only if the event itself happened there, e.g. an attack on a
+ship in those waters or a strike on a target inside that box. GDELT often places events in the
+wrong country, so judge from the article, not the Candidate's place field.
 
 Not a real event: opinion or analysis pieces, explainers, anniversaries, threats with no action
 (unless the type is military_threat), statements that something "could" or "may" happen, and
@@ -370,7 +381,7 @@ def refine_candidates(
     cap = cfg.backfill_llm_usd if purpose == "backfill" else cfg.daily_llm_usd
     today = date.today().isoformat()
     tickers = [a.ticker for a in cfg.assets]
-    system = system_prompt(tax, tickers)
+    system = system_prompt(tax, tickers, region)
     valid_types = {t.id for t in tax.event_types}
     stats = {"events": 0, "rejected": 0, "skipped_budget": 0, "errors": 0}
 
@@ -380,7 +391,7 @@ def refine_candidates(
             stats["errors"] += 1
             return
         record_spend(conn, usage, purpose)
-        if result.is_real_event and result.event_type in valid_types:
+        if result.is_real_event and result.event_type in valid_types and result.in_region:
             try:
                 occurred = date.fromisoformat(result.occurred_on)
             except ValueError:

@@ -5,7 +5,7 @@ from tremor.events import load_events
 from tremor.gdelt import ensure_schema, parse_rows, save_candidates
 from tremor.refine import (
     FakeRefiner, Usage, fetch_article, headline_from_url, html_to_text, pick_candidates,
-    refine_candidates, spent,
+    refine_candidates, spent, system_prompt,
 )
 from tremor.storage import connect
 from tremor.taxonomy import load_taxonomy
@@ -113,3 +113,17 @@ def test_parallel_matches_sequential(tmp_path):
         events = conn.execute("SELECT id, event_type FROM events ORDER BY id").fetchall()
         runs.append((stats, events))
     assert runs[0] == runs[1]
+
+
+def test_events_outside_the_region_are_rejected(tmp_path):
+    conn = seeded_db(tmp_path)
+
+    class Elsewhere(FakeRefiner):
+        def refine(self, system, prompt):
+            r, u = super().refine(system, prompt)
+            return r.model_copy(update={"in_region": False}), u
+
+    stats = refine_candidates(conn, CFG, TAX, Elsewhere(), fetch=lambda u: ARTICLE,
+                              log=lambda m: None)
+    assert stats["events"] == 0 and stats["rejected"] > 0
+    assert "in_region true only if" in system_prompt(TAX, ["BNO"])
