@@ -211,6 +211,7 @@ def score(
             " VALUES (?, ?, ?, ?, ?)",
             (run_id, cand["source_url"], int(pred_real), result.event_type,
              int(bool(result.in_region))))
+        conn.commit()  # never hold the write lock across slow article fetches and LLM calls
     s = EvalScore(run_id, len(rows), _ratio(real_hits, len(rows)), _ratio(type_hits, type_total),
                   _ratio(region_hits, len(rows)), _ratio(noise_hits, noise_total),
                   _ratio(kept_right, kept), _ratio(should_kept, should))

@@ -53,7 +53,8 @@ EVENT_COLUMNS_V2 = {
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=30)
+    # Long waits: refinement, Eval scoring and the dashboard can share the file (ADR-0013).
+    conn = sqlite3.connect(path, timeout=60)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
