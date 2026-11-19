@@ -101,3 +101,38 @@ def test_examples_block_reads_the_file(tmp_path):
     text = examples_block(f)
     assert "1. GDELT place: Aden" in text and "real Event, shipping_attack" in text
     assert examples_block(tmp_path / "missing.json") == ""
+
+
+def test_missing_judge_ruling_is_unsure_not_agreed():
+    codex, _ = fake_codex({2}, set())
+
+    def no_rulings(prompt, schema):
+        return {"rulings": []} if prompt.startswith("You are the JUDGE") else codex(prompt, schema)
+
+    out = {o["source_url"][-1]: o for o in panel.run_panel(TAX, items(4), codex=no_rulings,
+                                                           log=lambda m: None)}
+    assert out["2"]["is_real"] is None and "no ruling" in out["2"]["note"]
+
+
+def test_foreign_and_duplicate_ids_are_ignored():
+    def codex(prompt, schema):
+        key = "labels" if prompt.startswith("You are the LABELER") else "reviews"
+        rows = [{**label(0), "reason": "r", "agrees": True, "argument": "a"}] * 2  # duplicate 0
+        rows.append({**label(99), "reason": "r", "agrees": True, "argument": "a"})  # foreign id
+        rows.append({**label(1), "reason": "r", "agrees": True, "argument": "a"})
+        return {key: rows}
+
+    out = panel.run_panel(TAX, items(2), codex=codex, log=lambda m: None)
+    assert out[0]["is_real"] is None and "incomplete" in out[0]["note"]
+    assert out[1]["is_real"] is True
+
+
+def test_story_keys_match_syndicated_copies():
+    a = panel.story_keys("https://www.news.com.au/x/news-story/99228f3ece9d3a5850eda8a2742df723",
+                         "Houthi rebels seize Emirati ship Rwabee off Yemen")
+    b = panel.story_keys("https://www.heraldsun.com.au/y/news-story/99228f3ece9d3a5850eda8a2742df723",
+                         None)
+    c = panel.story_keys("https://other.example/story", "Houthi rebels seize Emirati ship Rwabee "
+                         "off Yemen")
+    assert a & b and a & c
+    assert not panel.story_keys("https://n.example/houthis-seize-ship", "Short")

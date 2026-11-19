@@ -153,14 +153,65 @@ def _batches(items: list[dict]) -> list[list[dict]]:
 
 def run_panel(tax: Taxonomy, items: list[dict], codex: Callable[[str, dict], dict] = run_codex,
               workers: int = 4, log=print) -> list[dict]:
-    """Returns one resolved label per item (with the panel's reasoning in `note`)."""
+    """Returns one resolved label per item (with the panel's reasoning in `note`).
+
+    Any item a stage fails to answer exactly once (missing, duplicated, or answered with an id
+    from another batch) is labeled unsure, which scoring excludes. Nothing is guessed.
+    """
     def stage(subset, build, key):
         out: dict[int, dict] = {}
         jobs = _batches(subset)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for res in pool.map(lambda b: codex(*build(b))[key], jobs):
-                out.update({r["id"]: r for r in res})
+            for batch, res in zip(jobs, pool.map(lambda b: codex(*build(b))[key], jobs)):
+                ids = [r["id"] for r in res]
+                out.update({r["id"]: r for r in res
+                            if ids.count(r["id"]) == 1 and r["id"] in {it["id"] for it in batch}})
         return out
+
+    labels = stage(items, lambda b: labeler_prompt(tax, b), "labels")
+    log(f"  labeler: {len(labels)}/{len(items)} items labeled")
+    labeled = [it for it in items if it["id"] in labels]
+    reviews = stage(labeled, lambda b: skeptic_prompt(tax, b, labels), "reviews")
+    reviewed = [it for it in labeled if it["id"] in reviews]
+    disputed = [it for it in reviewed if not reviews[it["id"]]["agrees"]
+                or not _same(labels[it["id"]], reviews[it["id"]])]
+    disputed_ids = {it["id"] for it in disputed}
+    log(f"  skeptic: {len(reviewed) - len(disputed)} agreed, {len(disputed)} disputed")
+    rulings = (stage(disputed, lambda b: judge_prompt(tax, b, labels, reviews), "rulings")
+               if disputed else {})
+    log(f"  judge: {sum(r['confident'] for r in rulings.values())}/{len(disputed)} confident rulings")
+
+    out = []
+    for it in items:
+        lab, rev = labels.get(it["id"]), reviews.get(it["id"])
+        if lab is None or rev is None:
+            final, unsure = lab or {"is_real_event": False, "event_type": "none",
+                                    "region": "none"}, True
+            note = "panel incomplete: a stage returned no usable answer for this item"
+        elif it["id"] in disputed_ids:
+            r = rulings.get(it["id"])
+            if r is None:
+                final, unsure = lab, True
+                note = (f"panel disputed, judge gave no ruling. labeler: {lab['reason']} | "
+                        f"skeptic: {rev['argument']}")
+            else:
+                final, unsure = r, not r["confident"]
+                note = (f"panel disputed. labeler: {lab['reason']} | skeptic: {rev['argument']} | "
+                        f"judge{'' if r['confident'] else ' (not confident)'}: {r['reason']}")
+        else:
+            final, unsure = lab, False
+            note = f"panel agreed. labeler: {lab['reason']} | skeptic: {rev['argument']}"
+        out.append({
+            "source_url": it["source_url"],
+            # A real event outside the taxonomy counts as noise, as refinement treats it.
+            "is_real": None if unsure else bool(final["is_real_event"]
+                                                and final["event_type"] != "none"),
+            "event_type": final["event_type"] if final["is_real_event"] else "none",
+            "region": final["region"],
+            "disputed": it["id"] in disputed_ids,
+            "note": note,
+        })
+    return out
 
     labels = stage(items, lambda b: labeler_prompt(tax, b), "labels")
     log(f"  labeler: {len(labels)} items labeled")
@@ -206,6 +257,18 @@ def _split_note(note: str) -> tuple[str, str]:
     return reason.strip(), rest.split(" | judge", 1)[0].strip()
 
 
+def story_keys(url: str, headline: str | None) -> set[str]:
+    """Keys shared by syndicated copies of one story: long ids in the URL, and the headline."""
+    import re
+
+    keys = {f"id:{tok}" for tok in re.findall(r"[A-Za-z0-9]{12,}", url)
+            if any(ch.isdigit() for ch in tok)}
+    words = re.findall(r"[a-z0-9]+", (headline or "").lower())
+    if len(words) >= 5:
+        keys.add("h:" + " ".join(words))
+    return keys
+
+
 def select_examples(conn, n: int = 16, seed: int = 3) -> list[dict]:
     """Pick worked examples from panel-agreed labels on the 'teach' split only.
 
@@ -214,13 +277,20 @@ def select_examples(conn, n: int = 16, seed: int = 3) -> list[dict]:
     """
     import random
 
+    # Never teach with a syndicated copy of a scored story (leakage into the test split).
+    test_keys: set[str] = set()
+    for url, headline in conn.execute(
+            "SELECT source_url, headline FROM eval_items WHERE split = 'test'"):
+        test_keys |= story_keys(url, headline)
     rows = conn.execute(
-        "SELECT i.candidate, l.is_real_event, l.event_type, l.region, l.note FROM eval_items i"
-        " JOIN eval_labels l USING (source_url) WHERE i.split = 'teach' AND l.unsure = 0"
-        " AND l.note LIKE 'panel agreed.%' ORDER BY i.source_url"
+        "SELECT i.candidate, l.is_real_event, l.event_type, l.region, l.note, i.headline"
+        " FROM eval_items i JOIN eval_labels l USING (source_url) WHERE i.split = 'teach'"
+        " AND l.unsure = 0 AND l.note LIKE 'panel agreed.%' ORDER BY i.source_url"
     ).fetchall()
     keep, elsewhere, noise = [], [], []
-    for cand_json, is_real, etype, region, note in rows:
+    for cand_json, is_real, etype, region, note, headline in rows:
+        if story_keys(json.loads(cand_json)["source_url"], headline) & test_keys:
+            continue
         cand = json.loads(cand_json)
         reason, argument = _split_note(note)
         in_region = region == cand["region"]

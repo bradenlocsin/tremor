@@ -102,8 +102,13 @@ def cmd_refine(args: argparse.Namespace) -> int:
     cfg = load_config()
     conn = connect(cfg.storage_path)
     gdelt.ensure_schema(conn)
+    workers = 4
     if args.fake:
         refiner = FakeRefiner()
+    elif args.engine == "codex":
+        from tremor.codex_refine import CodexRefiner
+
+        refiner, workers = CodexRefiner(), args.workers or 6
     elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         refiner = ClaudeRefiner(cfg.refinement_model)
     else:
@@ -113,6 +118,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         conn, cfg, default_taxonomy().first_slice(), refiner,
         purpose="backfill" if args.backfill else "refine",
         per_day_per_type=args.per_day, since=args.since, limit=args.limit,
+        workers=args.workers or workers,
     )
     print(stats)
     return 0
@@ -213,8 +219,13 @@ def cmd_eval(args: argparse.Namespace) -> int:
         evalset.ensure_schema(conn)
         print("fetching Eval set articles…")
         items = panel.gather(conn)
+        conn.executemany("UPDATE eval_items SET headline = ? WHERE source_url = ?",
+                         [(it["headline"], it["source_url"]) for it in items])
+        conn.commit()
         print(f"running the Codex panel ({model}) on {len(items)} items…")
         for lab in panel.run_panel(tax, items, codex=lambda p, s: panel.run_codex(p, s, model)):
+            if evalset.has_author_label(conn, lab["source_url"]):
+                continue  # hand labels always win over the panel (ADR-0025)
             evalset.save_label(conn, lab["source_url"], lab["is_real"], lab["event_type"],
                                lab["region"], duplicate=False, note=lab["note"],
                                labeled_by=f"panel:{model}")
@@ -283,6 +294,9 @@ def build_parser() -> argparse.ArgumentParser:
     rf.add_argument("--per-day", type=int, default=3, help="most-covered URLs per day and type")
     rf.add_argument("--since", default=None, help="only Candidates on/after this ISO date")
     rf.add_argument("--limit", type=int, default=None)
+    rf.add_argument("--engine", choices=["claude", "codex"], default="claude",
+                    help="codex: refine with Codex CLI (one-off backfills, ADR-0027)")
+    rf.add_argument("--workers", type=int, default=None, help="parallel calls / Codex sessions")
     rf.set_defaults(func=cmd_refine)
     rc = sub.add_parser("recommend", help="Recommendations for the latest Episode starts")
     rc.add_argument("--latest", type=int, default=3)
