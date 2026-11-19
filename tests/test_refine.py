@@ -85,7 +85,8 @@ def test_budget_cap_stops_spending(tmp_path):
             r, _ = super().refine(system, prompt)
             return r, Usage(self.model, 1_000_000, 0)  # $2 per call, above the $2 daily cap
 
-    stats = refine_candidates(conn, CFG, TAX, Pricey(), fetch=lambda u: ARTICLE, log=lambda m: None)
+    stats = refine_candidates(conn, CFG, TAX, Pricey(), fetch=lambda u: ARTICLE, log=lambda m: None,
+                              workers=1)
     assert stats["skipped_budget"] == 1  # first call spends the cap, second is skipped
     assert spent(conn, "refine") >= CFG.daily_llm_usd
 
@@ -101,3 +102,14 @@ def test_redirect_to_front_page_counts_as_dead():
     assert redirected_to_front_page("https://a.com/x/y/z-story", "https://a.com/news")
     assert not redirected_to_front_page("https://a.com/x/y/story", "https://a.com/x/y/story")
     assert not redirected_to_front_page("http://a.com/2015/story-slug", "https://a.com/2015/story-slug")
+
+
+def test_parallel_matches_sequential(tmp_path):
+    runs = []
+    for workers in (1, 8):
+        conn = seeded_db(tmp_path / f"w{workers}")
+        stats = refine_candidates(conn, CFG, TAX, FakeRefiner(), fetch=lambda u: ARTICLE,
+                                  log=lambda m: None, workers=workers)
+        events = conn.execute("SELECT id, event_type FROM events ORDER BY id").fetchall()
+        runs.append((stats, events))
+    assert runs[0] == runs[1]

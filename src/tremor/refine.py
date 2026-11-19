@@ -15,10 +15,11 @@ import hashlib
 import json
 import re
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
-from typing import Literal, Protocol
+from typing import Protocol
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
@@ -103,7 +104,8 @@ class ClaudeRefiner:
         import anthropic
 
         self.model = model
-        self.client = anthropic.Anthropic()  # ANTHROPIC_API_KEY or an `ant auth login` profile
+        # Retries back off on 429s (new accounts start at a low requests-per-minute tier).
+        self.client = anthropic.Anthropic(max_retries=8)  # ANTHROPIC_API_KEY or `ant auth login`
 
     def refine(self, system: str, prompt: str) -> tuple[Refinement, Usage]:
         response = self.client.messages.parse(
@@ -322,7 +324,7 @@ def pick_candidates(
     """One row per unrefined source URL, keeping the most-covered URLs per day and type."""
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        """
+        f"""
         WITH urls AS (
           SELECT source_url, MIN(event_date) AS event_date, candidate_types,
                  MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
@@ -330,7 +332,7 @@ def pick_candidates(
                  SUM(num_articles) AS coverage
           FROM candidates
           WHERE status = 'new' AND region = ? AND (? IS NULL OR event_date >= ?)
-            AND {fresh}
+            AND {FRESH_SQL}
           GROUP BY source_url
         ), ranked AS (
           SELECT *, ROW_NUMBER() OVER (
@@ -338,7 +340,7 @@ def pick_candidates(
           FROM urls
         )
         SELECT * FROM ranked WHERE rk <= ? ORDER BY event_date DESC, coverage DESC
-        """.format(fresh=FRESH_SQL),
+        """,
         (region, since, since, per_day_per_type),
     ).fetchall()
     conn.row_factory = None
@@ -362,6 +364,7 @@ def refine_candidates(
     limit: int | None = None,
     fetch=_get,
     log=print,
+    workers: int = 4,
 ) -> dict[str, int]:
     conn.executescript(SPEND_SCHEMA)
     cap = cfg.backfill_llm_usd if purpose == "backfill" else cfg.daily_llm_usd
@@ -371,20 +374,12 @@ def refine_candidates(
     valid_types = {t.id for t in tax.event_types}
     stats = {"events": 0, "rejected": 0, "skipped_budget": 0, "errors": 0}
 
-    for cand in pick_candidates(conn, region, per_day_per_type, since, limit):
-        already = spent(conn, purpose, None if purpose == "backfill" else today)
-        if already >= cap:
-            stats["skipped_budget"] += 1
-            continue
-        article = fetch_article(cand["source_url"], cand["event_date"], fetch=fetch)
-        try:
-            result, usage = refiner.refine(system, user_prompt(cand, article))
-        except Exception as e:  # noqa: BLE001
-            log(f"  refine failed for {cand['source_url']}: {e}")
+    def _store(conn, cand, article, result, usage, stats):
+        if isinstance(result, Exception):
+            log(f"  refine failed for {cand['source_url']}: {result}")
             stats["errors"] += 1
-            continue
+            return
         record_spend(conn, usage, purpose)
-
         if result.is_real_event and result.event_type in valid_types:
             try:
                 occurred = date.fromisoformat(result.occurred_on)
@@ -421,4 +416,28 @@ def refine_candidates(
             "UPDATE candidates SET status = ? WHERE source_url = ?", (status, cand["source_url"])
         )
         conn.commit()
+
+    def work(cand: dict):
+        """Network-only part (article fetch + LLM call); runs in worker threads."""
+        article = fetch_article(cand["source_url"], cand["event_date"], fetch=fetch)
+        try:
+            return article, *refiner.refine(system, user_prompt(cand, article))
+        except Exception as e:  # noqa: BLE001
+            return article, e, None
+
+    todo = pick_candidates(conn, region, per_day_per_type, since, limit)
+    done = 0
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for start in range(0, len(todo), workers):
+            chunk = todo[start:start + workers]
+            # Budget is checked per chunk; the overshoot is at most one chunk of calls.
+            if spent(conn, purpose, None if purpose == "backfill" else today) >= cap:
+                stats["skipped_budget"] += len(todo) - start
+                break
+            for cand, (article, result, usage) in zip(chunk, pool.map(work, chunk)):
+                _store(conn, cand, article, result, usage, stats)
+            done += len(chunk)
+            if done % 500 < workers:
+                log(f"  {done}/{len(todo)} refined, ${spent(conn, purpose):.2f} spent ({purpose})")
     return stats
+
