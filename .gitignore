@@ -13,3 +13,7 @@ data/
 .DS_Store
 .claude/settings.local.json
 .handoff/
+
+# Separate clones that live in this folder but aren't part of TREMOR
+gods-eye-view/
+worldmonitor/
