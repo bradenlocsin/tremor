@@ -44,7 +44,7 @@ def cmd_chart(args: argparse.Namespace) -> int:
     from pathlib import Path
 
     from tremor.charts import plot_study, save
-    from tremor.event_study import study
+    from tremor.analysis import analyze_group
     from tremor.events import load_events
     from tremor.prices import load_prices
     from tremor.storage import connect
@@ -54,11 +54,10 @@ def cmd_chart(args: argparse.Namespace) -> int:
     tax = default_taxonomy()
     conn = connect(cfg.storage_path)
     prices = load_prices(conn, cfg.tickers)
-    events = load_events(conn, event_type=args.type, region=args.region)
-    results = [
-        study(prices, events, a.ticker, cfg.benchmark, cfg.event_study) for a in cfg.assets
-    ]
-    title = f"{tax.event_type(args.type).name}s, {tax.region(args.region).name}: average CAR"
+    events = load_events(conn)
+    by_asset = analyze_group(args.type, args.region, events, prices, cfg)
+    results = [by_asset[a.ticker] for a in cfg.assets]
+    title = f"{tax.event_type(args.type).name}s, {tax.region(args.region).name}: average CAR at Episode starts"
     names = {a.ticker: a.category for a in cfg.assets}
     out = Path(args.out)
     for theme in ("light", "dark"):
