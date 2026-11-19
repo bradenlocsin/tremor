@@ -125,6 +125,12 @@ def judge_prompt(tax: Taxonomy, batch: list[dict], labels: dict[int, dict],
 # ---------------------------------------------------------------- running Codex
 
 
+class CodexUsageLimit(RuntimeError):
+    """The Codex subscription's usage limit is reached; retrying before the reset is pointless."""
+
+    fatal = True
+
+
 def run_codex(prompt: str, schema: dict, model: str = DEFAULT_MODEL) -> dict:
     """One ephemeral, read-only Codex session in an empty directory; returns its JSON answer."""
     with tempfile.TemporaryDirectory() as d:
@@ -132,12 +138,19 @@ def run_codex(prompt: str, schema: dict, model: str = DEFAULT_MODEL) -> dict:
         sp.write_text(json.dumps(schema))
         work = Path(d) / "work"
         work.mkdir()
-        subprocess.run(
+        proc = subprocess.run(
             ["codex", "exec", "-m", model, "-s", "read-only", "--ephemeral",
              "--skip-git-repo-check", "-C", str(work), "--output-schema", str(sp),
              "-o", str(out), "-"],
-            input=prompt, text=True, capture_output=True, timeout=1800, check=True,
+            input=prompt, text=True, capture_output=True, timeout=1800,
         )
+        if proc.returncode != 0:
+            text = proc.stderr + proc.stdout
+            if "usage limit" in text.lower():
+                line = next((x for x in text.splitlines() if "usage limit" in x.lower()), "")
+                raise CodexUsageLimit(line.strip() or "Codex usage limit reached")
+            tail = " ".join(text.strip().splitlines()[-2:])[:300]
+            raise RuntimeError(f"codex exited {proc.returncode}: {tail}")
         return json.loads(out.read_text())
 
 

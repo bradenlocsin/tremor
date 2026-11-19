@@ -26,3 +26,16 @@ def test_codex_refiner_runs_in_the_pipeline(tmp_path):
     assert stats["events"] >= 1 and stats["events"] + stats["errors"] + stats["rejected"] > 1
     assert conn.execute("SELECT DISTINCT model FROM events WHERE origin='gdelt'").fetchall() == \
         [("codex:gpt-6.2-sol",)]
+
+
+def test_usage_limit_stops_the_run_cleanly(tmp_path):
+    from tremor.panel import CodexUsageLimit
+
+    def limited(prompt, schema, model):
+        raise CodexUsageLimit("You've hit your usage limit. Try again at 2:44 PM.")
+
+    conn = seeded_db(tmp_path)
+    stats = refine_candidates(conn, CFG, TAX, CodexRefiner(codex=limited),
+                              fetch=lambda u: ARTICLE, log=lambda m: None, workers=2)
+    assert "usage limit" in stats["stopped"] and stats["errors"] == 0
+    assert conn.execute("SELECT COUNT(*) FROM candidates WHERE status != 'new'").fetchone()[0] == 0
