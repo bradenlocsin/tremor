@@ -50,6 +50,7 @@ class Headline:
     t_stat: float
     p_value: float
     significant: bool
+    q_value: float | None = None  # Benjamini–Hochberg across the Analysis (ADR-0028)
 
 
 @dataclass(frozen=True)
