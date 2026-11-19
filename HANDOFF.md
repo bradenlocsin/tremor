@@ -11,6 +11,17 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - Workflow: one branch per issue (`issue-N-short-name`), PR into `main` with `Closes #N`, squash-merge once tests pass.
 - After each step, append a line to the log below. That also signals the handoff watchdog that work is still happening.
 
+## Morning checklist (for the user)
+
+1. **API key** (unblocks #9, #12 rationales, #10 scoring, #17 results): `export ANTHROPIC_API_KEY=...`, then
+   `uv run tremor refine --backfill` (≤ $20 cap) → `uv run tremor recommend` → `uv run tremor backtest`
+2. **Label the Eval set** (#10, ~2–3 h, can be split up): `TREMOR_PASSCODE=pick-one uv run streamlit run src/tremor/dashboard/app.py`, then go to the "Label (Eval set)" page.
+   The 100 items are sampled automatically once the backfill finishes (see `data/overnight.log`). Then run `uv run tremor eval score`.
+3. **Deploy** (#15): follow `docs/deploy.md` (Fly.io account, ~$5–10/month).
+4. **Finish the case study** (#17): fill the pending section of `docs/case-study-red-sea.md` from `tremor backtest`.
+
+Overnight background jobs: the GDELT backfill (2015 → today, ~3 h left at 00:40 MST), then `.handoff/after_backfill.sh` (retries failed days, samples the Eval set). The Codex watchdog was **disarmed**, because nothing left is doable without you. Re-arm: `rm .handoff-stop && nohup caffeinate -i bash .handoff/watchdog.sh &`.
+
 ## Status
 
 | Issue | State | Notes |
@@ -50,3 +61,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:36 (Claude): #15 deploy prep merged (jobs, scheduler, backups, Dockerfile, fly.toml, docs/deploy.md). Both jobs ran locally end to end. Fixed: price update held a write lock across downloads. Actual deploy BLOCKED: needs the user's Fly.io account (docs/deploy.md).
 - 2026-11-19 00:39 (Claude): #16 sensor context done via IMF PortWatch (the upstream behind gods-eye-view's chokepoints), with history back to 2019 (8,628 rows). Context in the dashboard + rationale, never in the Analysis.
 - 2026-11-19 00:41 (Claude): #17 case-study DRAFT merged (docs/case-study-red-sea.md): real shipping data + verified Events + method; back-test results marked pending (need API key).
+- 2026-11-19 00:42 (Claude): stopping. All code issues done; remaining work needs the user (API key, labels, hosting account). Codex watchdog disarmed; overnight waiter samples the Eval set after the backfill.
