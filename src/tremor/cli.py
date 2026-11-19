@@ -30,6 +30,16 @@ def cmd_prices(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_seed(args: argparse.Namespace) -> int:
+    from tremor.events import load_seed_events, save_events
+    from tremor.storage import connect
+
+    cfg = load_config()
+    n = save_events(connect(cfg.storage_path), load_seed_events())
+    print(f"loaded {n} seed Events")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -39,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("prices", help="fetch new daily prices into the cache").set_defaults(
         func=cmd_prices
     )
+    sub.add_parser("seed", help="load the hand-entered seed Events").set_defaults(func=cmd_seed)
     return parser
 
 
