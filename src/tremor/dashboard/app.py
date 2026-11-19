@@ -24,6 +24,9 @@ from tremor.storage import connect
 from tremor.taxonomy import default_taxonomy
 
 SERIES_1, SERIES_2, BAND = "#2a78d6", "#eb6834", "rgba(42,120,214,0.18)"
+# Categorical slots 1–3 (validated light + dark with the dataviz validator; aqua needs labels)
+CHOKEPOINT_COLORS = {"Bab el-Mandeb Strait": "#2a78d6", "Suez Canal": "#eb6834",
+                     "Cape of Good Hope": "#1baf7a"}
 GODS_EYE_VIEW = "https://godseyeview.ai/online/"
 
 st.set_page_config(page_title="TREMOR", page_icon="📉", layout="wide")
@@ -82,7 +85,35 @@ def load():
         saved = pd.read_sql_query("SELECT * FROM recommendations", conn)
     except Exception:  # noqa: BLE001
         saved = pd.DataFrame()
-    return cfg, events, prices, bt, live, saved
+    from tremor.sensors import transits
+
+    chokepoints = transits(conn, "red_sea")
+    return cfg, events, prices, bt, live, saved, chokepoints
+
+
+def chokepoint_chart(wide: pd.DataFrame, when) -> go.Figure:
+    """Daily transits, 7-day mean, ±120 days around the Event; lines labeled at their ends."""
+    t = pd.Timestamp(when)
+    w = wide.rolling(7, min_periods=4).mean()
+    w = w[(w.index >= t - pd.Timedelta(days=120)) & (w.index <= t + pd.Timedelta(days=120))]
+    fig = go.Figure()
+    for port in w.columns:
+        s = w[port].dropna()
+        if s.empty:
+            continue
+        color = CHOKEPOINT_COLORS.get(port, "#52514e")
+        fig.add_trace(go.Scatter(x=s.index, y=s, mode="lines", name=port,
+                                 line=dict(color=color, width=2),
+                                 hovertemplate="%{x|%Y-%m-%d}: %{y:.0f} ships/day<extra>" + port
+                                 + "</extra>"))
+        fig.add_annotation(x=s.index[-1], y=s.iloc[-1], text=port, showarrow=False,
+                           xanchor="left", xshift=6, font=dict(size=11))
+    if not w.empty and w.index.min() <= t <= w.index.max():
+        fig.add_vline(x=t, line_width=1, line_dash="dot", line_color="gray")
+    fig.update_layout(height=300, margin=dict(l=10, r=150, t=30, b=10), hovermode="x unified",
+                      yaxis=dict(title="ships per day (7-day mean)", rangemode="tozero"),
+                      legend=dict(orientation="h", y=1.15, x=0))
+    return fig
 
 
 def pct(x: float) -> str:
@@ -120,7 +151,7 @@ def car_chart(result, own_car: pd.Series | None, asset: str) -> go.Figure:
 # ---------------------------------------------------------------- pages
 
 
-def events_page(cfg, events, prices, saved):
+def events_page(cfg, events, prices, saved, chokepoints):
     tax = default_taxonomy()
     if not events:
         st.info("No Events yet. Run `uv run tremor seed` or the GDELT pipeline.")
@@ -207,6 +238,16 @@ def events_page(cfg, events, prices, saved):
                             st.caption(f"Downgraded: {stored.downgrade_reason.iloc[0]}")
                 else:
                     st.caption(f"No Recommendation: {rec.no_rec_reason}")
+
+        if target.region == "red_sea" and not chokepoints.empty:
+            from tremor.sensors import ATTRIBUTION, context
+
+            st.markdown("#### Shipping through the chokepoints")
+            st.caption("Sensor context only: never used in the Analysis above (ADR-0023).")
+            st.plotly_chart(chokepoint_chart(chokepoints, target.occurred_on), width="stretch")
+            for c in context(chokepoints, target.occurred_on):
+                st.caption(c.sentence())
+            st.caption(ATTRIBUTION + " (reuse with attribution, not for resale).")
 
         if target.lat is not None and target.lon is not None:
             st.markdown("#### Where")
@@ -312,7 +353,7 @@ def label_page(cfg):
 
 def main():
     gate()
-    cfg, events, prices, bt, live, saved = load()
+    cfg, events, prices, bt, live, saved, chokepoints = load()
     st.sidebar.title("TREMOR")
     st.sidebar.caption("Tracking Risk Events & Market Outcome Reactions")
     page = st.sidebar.radio("Page", ["Events", "Track record", "Label (Eval set)"], key="page")
@@ -321,7 +362,7 @@ def main():
     st.sidebar.caption("Prices: Yahoo Finance via yfinance (non-commercial). Events: GDELT, "
                        "refined by Claude.")
     if page == "Events":
-        events_page(cfg, events, prices, saved)
+        events_page(cfg, events, prices, saved, chokepoints)
     elif page == "Track record":
         track_record_page(bt, live)
     else:

@@ -145,7 +145,10 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     targets = [ep.first for ep in episodes][-args.latest:]
     for target in targets:
         analysis = analyze_event(target, events, prices, cfg, episodes)
-        recs = recommend(analysis, by_id, explainer, conn)
+        from tremor.sensors import context_text
+
+        ctx = context_text(conn, target.region, target.occurred_on)
+        recs = recommend(analysis, by_id, explainer, conn, context=ctx)
         save_recommendations(conn, recs)
         print(f"{target.occurred_on} {target.title[:70]}")
         for r in recs:
