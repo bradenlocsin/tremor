@@ -73,12 +73,16 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     for col in ("keep_precision", "keep_recall"):
         if col not in run_cols:
             conn.execute(f"ALTER TABLE eval_runs ADD COLUMN {col} REAL")
+    item_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_items)")}
+    if "split" not in item_cols:  # 'test' is scored; 'teach' supplies worked examples (ADR-0026)
+        conn.execute("ALTER TABLE eval_items ADD COLUMN split TEXT NOT NULL DEFAULT 'test'")
     pred_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_predictions)")}
     if "in_region" not in pred_cols:
         conn.execute("ALTER TABLE eval_predictions ADD COLUMN in_region INTEGER")
 
 
-def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7) -> int:
+def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7,
+           split: str = "test") -> int:
     """Add a stratified sample of unlabeled Candidate URLs. Returns how many were added."""
     ensure_schema(conn)
     conn.row_factory = sqlite3.Row
@@ -110,8 +114,10 @@ def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7) -
                 picked.append(strata[k].pop())
     now = datetime.now(UTC).isoformat(timespec="seconds")
     conn.executemany(
-        "INSERT OR IGNORE INTO eval_items VALUES (?, ?, ?, ?, ?)",
-        [(p["source_url"], p["event_date"], p["region"], json.dumps(p), now) for p in picked],
+        "INSERT OR IGNORE INTO eval_items (source_url, event_date, region, candidate, sampled_at,"
+        " split) VALUES (?, ?, ?, ?, ?, ?)",
+        [(p["source_url"], p["event_date"], p["region"], json.dumps(p), now, split)
+         for p in picked],
     )
     conn.commit()
     return len(picked)
@@ -175,7 +181,7 @@ def score(
     run_id = f"{refiner.model}-{prompt_hash}-{datetime.now(UTC):%Y%m%dT%H%M%S%f}"
     rows = conn.execute(
         "SELECT i.candidate, l.is_real_event, l.event_type, l.region FROM eval_items i"
-        " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0"
+        " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0 AND i.split = 'test'"
     ).fetchall()
     real_hits = type_hits = type_total = region_hits = noise_hits = noise_total = 0
     kept = kept_right = should = should_kept = 0

@@ -67,3 +67,37 @@ def test_real_event_outside_the_taxonomy_counts_as_noise():
 
     out = panel.run_panel(TAX, items(1), codex=codex, log=lambda m: None)
     assert out[0]["is_real"] is False
+
+
+def test_examples_come_only_from_the_teach_split(tmp_path):
+    import json as _json
+
+    from tremor import evalset
+    from tremor.storage import connect
+
+    conn = connect(tmp_path / "t.sqlite")
+    evalset.ensure_schema(conn)
+    for split, n in (("test", 5), ("teach", 5)):
+        for i in range(n):
+            url = f"https://n.example/{split}/{i}"
+            cand = {"source_url": url, "region": "red_sea", "place": "Aden"}
+            conn.execute("INSERT INTO eval_items (source_url, event_date, region, candidate,"
+                         " sampled_at, split) VALUES (?, '2024-01-01', 'red_sea', ?, 'x', ?)",
+                         (url, _json.dumps(cand), split))
+            evalset.save_label(conn, url, i % 2 == 0, "shipping_attack" if i % 2 == 0 else "none",
+                               "red_sea", False, note=f"panel agreed. labeler: {split} r | "
+                               "skeptic: a", labeled_by="panel:x")
+    picked = panel.select_examples(conn, n=16)
+    assert len(picked) == 5 and all(p["summary"] == "teach r" for p in picked)
+    assert sum(p["keep"] for p in picked) == 3
+
+
+def test_examples_block_reads_the_file(tmp_path):
+    from tremor.refine import examples_block
+
+    f = tmp_path / "ex.json"
+    f.write_text('[{"place": "Aden", "summary": "s", "why": "w", "is_real_event": true,'
+                 ' "event_type": "shipping_attack", "in_region": true, "keep": true}]')
+    text = examples_block(f)
+    assert "1. GDELT place: Aden" in text and "real Event, shipping_attack" in text
+    assert examples_block(tmp_path / "missing.json") == ""

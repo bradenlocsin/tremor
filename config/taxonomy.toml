@@ -1,6 +1,6 @@
 # TREMOR Event-type taxonomy and Regions (ADR-0011, ADR-0019).
 # Bump `version` whenever a definition changes: Eval set labels and Comparables depend on it.
-version = 2
+version = 3
 
 # Each Event type has:
 #   definition : one line a non-expert can label against
@@ -12,7 +12,7 @@ version = 2
 [[event_types]]
 id = "shipping_attack"
 name = "Shipping attack"
-definition = "A commercial vessel is struck, seized, boarded or fired on."
+definition = "Any vessel in the Region's waters, commercial or naval, is struck, seized, boarded or fired on, including missiles or drones aimed at it that are shot down. Strikes on an armed group's own boats are a military_strike instead."
 example = "Houthi missile hits the tanker Marlin Luanda in the Gulf of Aden (Jan 2024)."
 cameo = ["181", "190", "193", "195", "171"]
 keywords = ["ship", "vessel", "tanker", "cargo", "freighter", "container", "maritime", "hijack", "seiz"]
@@ -21,7 +21,7 @@ first_slice = true
 [[event_types]]
 id = "military_strike"
 name = "Military strike"
-definition = "A state or armed group carries out a missile, air, drone or artillery strike on a target on land."
+definition = "A state or armed group carries out a missile, air, drone or artillery strike on a target on land, or on an armed group's boats, launch sites or weapons at sea."
 example = "US and UK air strikes on Houthi targets in Yemen (Jan 2024)."
 cameo = ["190", "194", "195", "183"]
 keywords = []
@@ -30,8 +30,8 @@ first_slice = true
 [[event_types]]
 id = "chokepoint_disruption"
 name = "Chokepoint disruption"
-definition = "Passage through a strait, canal or key shipping lane is blocked, closed, threatened as a whole, or mass-rerouted."
-example = "Major carriers suspend Red Sea transits and reroute around the Cape of Good Hope (Dec 2023)."
+definition = "Passage through a strait, canal or key shipping lane is blocked, closed or mass-rerouted, or a party able to enforce it announces a blockade, closure or transit ban (for some or all ships)."
+example = "Major carriers suspend Red Sea transits and reroute around the Cape of Good Hope (Dec 2023); the Houthis declare Israel-linked ships barred from the Red Sea (Nov 2023)."
 cameo = ["191", "1381", "163"]
 keywords = ["strait", "canal", "suez", "bab", "hormuz", "transit", "reroute", "blockade", "shipping lane", "red sea"]
 first_slice = true

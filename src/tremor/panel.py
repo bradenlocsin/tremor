@@ -194,3 +194,45 @@ def run_panel(tax: Taxonomy, items: list[dict], codex: Callable[[str, dict], dic
             "note": note,
         })
     return out
+
+
+# ---------------------------------------------------------------- worked examples (ADR-0026)
+
+
+def _split_note(note: str) -> tuple[str, str]:
+    """(labeler reason, skeptic argument) from a 'panel agreed. labeler: … | skeptic: …' note."""
+    body = note.split("labeler: ", 1)[-1]
+    reason, _, rest = body.partition(" | skeptic: ")
+    return reason.strip(), rest.split(" | judge", 1)[0].strip()
+
+
+def select_examples(conn, n: int = 16, seed: int = 3) -> list[dict]:
+    """Pick worked examples from panel-agreed labels on the 'teach' split only.
+
+    Mix: up to 7 in-Region Events, up to 3 real events outside the Region, the rest noise.
+    Summaries are the panel's own paraphrase, so no article text is stored.
+    """
+    import random
+
+    rows = conn.execute(
+        "SELECT i.candidate, l.is_real_event, l.event_type, l.region, l.note FROM eval_items i"
+        " JOIN eval_labels l USING (source_url) WHERE i.split = 'teach' AND l.unsure = 0"
+        " AND l.note LIKE 'panel agreed.%' ORDER BY i.source_url"
+    ).fetchall()
+    keep, elsewhere, noise = [], [], []
+    for cand_json, is_real, etype, region, note in rows:
+        cand = json.loads(cand_json)
+        reason, argument = _split_note(note)
+        in_region = region == cand["region"]
+        ex = {"place": cand.get("place") or "unknown", "summary": reason[:320],
+              "why": argument[:320], "is_real_event": bool(is_real) or etype != "none",
+              "event_type": etype, "in_region": in_region,
+              "keep": bool(is_real) and in_region}
+        (keep if ex["keep"] else elsewhere if etype != "none" else noise).append(ex)
+    rng = random.Random(seed)
+    for bucket in (keep, elsewhere, noise):
+        rng.shuffle(bucket)
+    picked = keep[:7] + elsewhere[:3]
+    picked += noise[: n - len(picked)]
+    rng.shuffle(picked)
+    return picked

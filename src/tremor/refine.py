@@ -15,6 +15,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -41,6 +42,14 @@ PRICES = {
     "claude-sonnet-5-5": (2.00, 10.00),
     "fake": (0.0, 0.0),
 }
+# Prompt-cache multipliers on the input price: 5-minute writes cost 1.25x; reads cost 0.1x
+# (0.05x on Sonnet 5.5), per the Claude API prompt-caching reference.
+CACHE_WRITE = 1.25
+CACHE_READ = {"claude-sonnet-5-5": 0.05}
+
+# Worked examples for refinement (ADR-0026): labeled by the Codex panel on the 'teach' split of
+# the Eval set, never the scored 'test' split. Written by `tremor eval examples`.
+EXAMPLES_PATH = Path(__file__).resolve().parents[2] / "config" / "refine_examples.json"
 
 SPEND_SCHEMA = """
 CREATE TABLE IF NOT EXISTS llm_spend (
@@ -88,11 +97,16 @@ class Usage:
     model: str
     input_tokens: int
     output_tokens: int
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
 
     @property
     def usd(self) -> float:
         p_in, p_out = PRICES.get(self.model, (0.0, 0.0))
-        return (self.input_tokens * p_in + self.output_tokens * p_out) / 1_000_000
+        read = CACHE_READ.get(self.model, 0.1)
+        return (self.input_tokens * p_in + self.output_tokens * p_out
+                + self.cache_write_tokens * p_in * CACHE_WRITE
+                + self.cache_read_tokens * p_in * read) / 1_000_000
 
 
 class Refiner(Protocol):
@@ -123,7 +137,9 @@ class ClaudeRefiner:
         if response.stop_reason == "refusal" or response.parsed_output is None:
             raise RuntimeError(f"refinement returned no structured output ({response.stop_reason})")
         u = response.usage
-        return response.parsed_output, Usage(self.model, u.input_tokens, u.output_tokens)
+        return response.parsed_output, Usage(
+            self.model, u.input_tokens, u.output_tokens,
+            u.cache_creation_input_tokens or 0, u.cache_read_input_tokens or 0)
 
 
 class FakeRefiner:
@@ -278,7 +294,22 @@ Not a real event: opinion or analysis pieces, explainers, anniversaries, threats
 roundups that only rehash earlier events.
 
 affected_assets: choose only from these tickers, and only when the link is direct: {", ".join(tickers)}.
-Return an empty list when unsure."""
+Return an empty list when unsure.{examples_block()}"""
+
+
+def examples_block(path: Path | None = None) -> str:
+    """Worked examples appended to the system prompt, if `tremor eval examples` has written them."""
+    path = path or EXAMPLES_PATH
+    if not path.is_file():
+        return ""
+    lines = ["\n\nWorked examples, decided by a careful reviewer. Follow the same judgment:"]
+    for i, ex in enumerate(json.loads(path.read_text()), 1):
+        verdict = (f"real Event, {ex['event_type']}, in Region" if ex["keep"] else
+                   f"not kept: is_real_event={str(ex['is_real_event']).lower()}, "
+                   f"event_type={ex['event_type']}, in_region={str(ex['in_region']).lower()}")
+        lines.append(f"\n{i}. GDELT place: {ex['place']}. What the article says: {ex['summary']}\n"
+                     f"   Decision: {verdict}. Why: {ex['why']}")
+    return "\n".join(lines)
 
 
 def user_prompt(cand: dict, article: Article) -> str:

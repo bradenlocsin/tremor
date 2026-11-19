@@ -127,3 +127,8 @@ def test_events_outside_the_region_are_rejected(tmp_path):
                               log=lambda m: None)
     assert stats["events"] == 0 and stats["rejected"] > 0
     assert "in_region true only if" in system_prompt(TAX, ["BNO"])
+
+
+def test_usage_counts_cached_tokens():
+    u = Usage("claude-haiku-5-5", 0, 0, cache_write_tokens=1_000_000, cache_read_tokens=1_000_000)
+    assert abs(u.usd - (0.10 * 1.25 + 0.10 * 0.1)) < 1e-9
