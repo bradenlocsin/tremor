@@ -157,6 +157,22 @@ def cmd_recommend(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    from tremor.backtest import run_backtest, save_backtest, summarize
+    from tremor.events import load_events
+    from tremor.prices import load_prices
+    from tremor.storage import connect
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    calls = run_backtest(load_events(conn), load_prices(conn, cfg.tickers), cfg)
+    save_backtest(conn, calls)
+    print(f"{len(calls)} back-tested calls (deterministic Stance/Confidence, no look-ahead)")
+    if calls:
+        print(summarize(calls).to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -190,6 +206,9 @@ def build_parser() -> argparse.ArgumentParser:
     rc.add_argument("--latest", type=int, default=3)
     rc.add_argument("--fake", action="store_true", help="template rationale instead of Claude")
     rc.set_defaults(func=cmd_recommend)
+    sub.add_parser("backtest", help="back-test Recommendations without look-ahead").set_defaults(
+        func=cmd_backtest
+    )
     return parser
 
 
