@@ -95,3 +95,49 @@ def save(fig, path: Path) -> Path:
     fig.savefig(path, dpi=160, facecolor=fig.get_facecolor())
     plt.close(fig)
     return path
+
+
+CHOKEPOINT_COLORS = {
+    "light": {"Bab el-Mandeb Strait": "#2a78d6", "Suez Canal": "#eb6834",
+              "Cape of Good Hope": "#1baf7a"},
+    "dark": {"Bab el-Mandeb Strait": "#3987e5", "Suez Canal": "#d95926",
+             "Cape of Good Hope": "#199e70"},
+}
+
+
+def plot_chokepoints(wide, start, end, marks: list[tuple[str, str]], theme: str = "light"):
+    """7-day mean daily transits per chokepoint, lines labeled at their ends; dated event marks."""
+    import pandas as pd
+
+    t = THEMES[theme]
+    w = wide.rolling(7, min_periods=4).mean()
+    w = w[(w.index >= pd.Timestamp(start)) & (w.index <= pd.Timestamp(end))]
+    fig, ax = plt.subplots(figsize=(11, 4.2), facecolor=t["surface"])
+    ax.set_facecolor(t["surface"])
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color(t["grid"])
+    ax.tick_params(colors=t["ink2"], labelsize=8, length=0)
+    ax.grid(axis="y", color=t["grid"], linewidth=0.8)
+    for port in w.columns:
+        s = w[port].dropna()
+        color = CHOKEPOINT_COLORS[theme].get(port, t["ink2"])
+        ax.plot(s.index, s.values, color=color, linewidth=2, label=port)
+        ax.annotate(port, (s.index[-1], s.iloc[-1]), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=8.5, color=t["ink"])
+    ymax = float(w.max().max()) * 1.25
+    for i, (day, label) in enumerate(marks):  # staggered so nearby dates don't collide
+        ax.axvline(pd.Timestamp(day), color=t["ink2"], linewidth=0.8, linestyle=(0, (3, 3)))
+        ax.text(pd.Timestamp(day), ymax * (0.99 - 0.065 * i), " " + label, fontsize=7.5,
+                color=t["ink2"], va="top")
+    ax.set_ylim(0, ymax)
+    ax.set_xlim(w.index.min(), w.index.max() + pd.Timedelta(days=70))
+    ax.set_ylabel("ships per day (7-day mean)", fontsize=8, color=t["ink2"])
+    ax.legend(loc="lower left", fontsize=8, frameon=False, labelcolor=t["ink"])
+    fig.suptitle("Red Sea shipping before and after the 2023–24 attacks", x=0.01, ha="left",
+                 fontsize=12, color=t["ink"], fontweight="bold")
+    fig.text(0.01, 0.005, "Chokepoint transits: IMF PortWatch (International Monetary Fund and "
+             "University of Oxford), estimated from ship AIS signals. Reuse with attribution, "
+             "not for resale.", fontsize=7, color=t["ink2"])
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
+    return fig
