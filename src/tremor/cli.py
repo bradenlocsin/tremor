@@ -212,6 +212,20 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_jobs(args: argparse.Namespace) -> int:
+    from tremor import jobs
+
+    {"hourly": jobs.hourly, "daily": jobs.daily}[args.which]()
+    return 0
+
+
+def cmd_scheduler(args: argparse.Namespace) -> int:
+    from tremor.jobs import run_scheduler
+
+    run_scheduler()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -254,6 +268,12 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--fake", action="store_true")
     ev.add_argument("--model", default=None, help="override the refinement model to compare")
     ev.set_defaults(func=cmd_eval)
+    jb = sub.add_parser("jobs", help="run a scheduled job once")
+    jb.add_argument("which", choices=["hourly", "daily"])
+    jb.set_defaults(func=cmd_jobs)
+    sub.add_parser("scheduler", help="run the hourly/daily jobs forever").set_defaults(
+        func=cmd_scheduler
+    )
     return parser
 
 
