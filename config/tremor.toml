@@ -60,4 +60,4 @@ rationale = "claude-sonnet-5-5"
 [budget]
 # ADR-0015, ADR-0017. US dollars.
 daily_llm_usd = 2.00
-backfill_llm_usd = 20.00
+backfill_llm_usd = 14.00  # leaves room on a $20 API balance
