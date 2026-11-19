@@ -154,6 +154,47 @@ def run_codex(prompt: str, schema: dict, model: str = DEFAULT_MODEL) -> dict:
         return json.loads(out.read_text())
 
 
+AGY_MODEL = "gemini-3.8-flash-high"
+_LIMIT_HINTS = ("usage limit", "quota", "resource_exhausted", "rate limit", "exhausted your")
+
+
+def run_agy(prompt: str, schema: dict, model: str = AGY_MODEL) -> dict:
+    """One headless Antigravity CLI (agy) turn in an empty sandboxed directory; returns its JSON.
+
+    Tools are never granted (print mode denies any tool without a permissions rule), so the model
+    only reads the prompt. A quota or rate-limit failure raises CodexUsageLimit, which stops a
+    backfill cleanly so a supervisor can resume it later.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        sp = Path(d) / "schema.json"
+        sp.write_text(json.dumps(schema))
+        work = Path(d) / "work"
+        work.mkdir()
+        prompt = ("You are a text classifier, not a coding agent. Do not call any tools, read "
+                  "files, or run commands: everything you need is in this message. Reply only "
+                  "with the JSON answer.\n\n" + prompt)
+        proc = subprocess.run(
+            ["agy", "-p", prompt, "--model", model, "--sandbox", "--disable-slash-commands",
+             "--output-format", "json", "--json-schema", str(sp), "--print-timeout", "600s"],
+            cwd=work, stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=700,
+            check=False,
+        )
+    text = proc.stdout + proc.stderr
+    try:
+        out = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        out = None
+    if proc.returncode == 0 and out and out.get("status") == "SUCCESS" \
+            and out.get("structured_output") is not None:
+        return out["structured_output"]
+    if any(h in text.lower() for h in _LIMIT_HINTS):
+        line = next((x for x in text.splitlines() if any(h in x.lower() for h in _LIMIT_HINTS)),
+                    "")
+        raise CodexUsageLimit(f"agy: {line.strip()[:300] or 'usage limit reached'}")
+    tail = " ".join(text.strip().splitlines()[-2:])[:300]
+    raise RuntimeError(f"agy exited {proc.returncode}: {tail}")
+
+
 def _same(a: dict, b: dict) -> bool:
     if a["is_real_event"] != b["is_real_event"]:
         return False

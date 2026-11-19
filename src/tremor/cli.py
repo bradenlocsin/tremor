@@ -44,8 +44,8 @@ def cmd_seed(args: argparse.Namespace) -> int:
 def cmd_chart(args: argparse.Namespace) -> int:
     from pathlib import Path
 
-    from tremor.charts import plot_study, save
     from tremor.analysis import analyze_group
+    from tremor.charts import plot_study, save
     from tremor.events import load_events
     from tremor.prices import load_prices
     from tremor.storage import connect
@@ -109,6 +109,10 @@ def cmd_refine(args: argparse.Namespace) -> int:
         from tremor.codex_refine import CodexRefiner
 
         refiner, workers = CodexRefiner(), args.workers or 6
+    elif args.engine == "agy":
+        from tremor.codex_refine import AgyRefiner
+
+        refiner, workers = AgyRefiner(args.model) if args.model else AgyRefiner(), 4
     elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         refiner = ClaudeRefiner(cfg.refinement_model)
     else:
@@ -118,7 +122,7 @@ def cmd_refine(args: argparse.Namespace) -> int:
         conn, cfg, default_taxonomy().first_slice(), refiner,
         purpose="backfill" if args.backfill else "refine",
         per_day_per_type=args.per_day, since=args.since, limit=args.limit,
-        workers=args.workers or workers,
+        workers=args.workers or workers, oldest_first=args.oldest_first,
     )
     print(stats)
     if "stopped" in stats:  # e.g. the Codex usage limit; exit 75 (EX_TEMPFAIL) so a supervisor
@@ -270,6 +274,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
     elif args.action == "score":
         if args.fake:
             refiner = FakeRefiner()
+        elif args.engine in ("codex", "agy"):
+            from tremor.codex_refine import AgyRefiner, CodexRefiner
+
+            cls = CodexRefiner if args.engine == "codex" else AgyRefiner
+            refiner = cls(args.model) if args.model else cls()
         elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
             refiner = ClaudeRefiner(args.model or cfg.refinement_model)
         else:
@@ -287,6 +296,28 @@ def cmd_eval(args: argparse.Namespace) -> int:
               f"recall {fmt(s.keep_recall)}")
     done, total = evalset.progress(conn)
     print(f"labeled {done} / {total}")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    from tremor import audit
+    from tremor.codex_refine import AgyRefiner
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    checker = AgyRefiner(args.model) if args.model else AgyRefiner()
+    r = audit.run(conn, cfg, default_taxonomy().first_slice(), checker, n=args.n, seed=args.seed,
+                  workers=args.workers)
+    print(f"{r.run_id}: n={r.n}  keep/reject agreement {r.keep_agreement:.0%}  "
+          f"kappa {r.kappa:.2f}  same Event type when both keep "
+          f"{'–' if r.type_agreement is None else f'{r.type_agreement:.0%}'}")
+    print(f"  both keep {r.both_keep}  only Codex keeps {r.only_codex}  "
+          f"only checker keeps {r.only_checker}  both reject {r.neither}")
+    for row in audit.disagreements(conn, r.run_id):
+        who = "Codex keeps" if row[1] else "checker keeps"
+        print(f"  [{who}] {row[0] or row[6]}\n      checker: {row[4]}: {(row[5] or '')[:160]}")
     return 0
 
 
@@ -332,8 +363,11 @@ def build_parser() -> argparse.ArgumentParser:
     rf.add_argument("--per-day", type=int, default=3, help="most-covered URLs per day and type")
     rf.add_argument("--since", default=None, help="only Candidates on/after this ISO date")
     rf.add_argument("--limit", type=int, default=None)
-    rf.add_argument("--engine", choices=["claude", "codex"], default="claude",
-                    help="codex: refine with Codex CLI (one-off backfills, ADR-0027)")
+    rf.add_argument("--engine", choices=["claude", "codex", "agy"], default="claude",
+                    help="codex / agy: refine with Codex or Antigravity CLI (backfills, ADR-0027)")
+    rf.add_argument("--model", default=None, help="agy: model id (default gemini-3.8-flash-high)")
+    rf.add_argument("--oldest-first", action="store_true",
+                    help="work from the oldest Candidates, so two engines meet in the middle")
     rf.add_argument("--workers", type=int, default=None, help="parallel calls / Codex sessions")
     rf.set_defaults(func=cmd_refine)
     rc = sub.add_parser("recommend", help="Recommendations for the latest Episode starts")
@@ -357,9 +391,17 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sample: 'teach' items supply worked examples and are never scored")
     ev.add_argument("--seed", type=int, default=7)
     ev.add_argument("--fake", action="store_true")
+    ev.add_argument("--engine", choices=["claude", "codex", "agy"], default="claude",
+                    help="score: which engine refines the Eval items")
     ev.add_argument("--model", default=None,
                     help="score: refinement model to compare; panel: Codex model")
     ev.set_defaults(func=cmd_eval)
+    au = sub.add_parser("audit", help="re-check Codex's history decisions with Gemini (ADR-0029)")
+    au.add_argument("--n", type=int, default=100)
+    au.add_argument("--seed", type=int, default=11)
+    au.add_argument("--model", default=None, help="agy model id")
+    au.add_argument("--workers", type=int, default=4)
+    au.set_defaults(func=cmd_audit)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])
     jb.set_defaults(func=cmd_jobs)
