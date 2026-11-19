@@ -519,6 +519,11 @@ def refine_candidates(
                     by_url.update({c["source_url"]: (a, r, u) for (c, a), (r, u) in zip(g, out)})
                 results = [(None, failed[i], None) if i in failed else by_url[c["source_url"]]
                            for i, c in enumerate(chunk)]
+            fatal = next((r for _, r, _ in results if getattr(r, "fatal", False)), None)
+            if fatal is not None:  # e.g. Codex usage limit: stop; unrefined Candidates stay new
+                log(f"  stopping: {fatal}. Rerun the same command later to continue.")
+                stats["stopped"] = str(fatal)
+                break
             for cand, (article, result, usage) in zip(chunk, results):
                 _store(conn, cand, article, result, usage, stats)
             done += len(chunk)
