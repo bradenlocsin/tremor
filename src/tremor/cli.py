@@ -17,12 +17,28 @@ def cmd_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prices(args: argparse.Namespace) -> int:
+    from tremor.prices import YFinanceSource, first_trade_dates, update_prices
+    from tremor.storage import connect
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    added = update_prices(conn, YFinanceSource(), cfg.tickers)
+    firsts = first_trade_dates(conn)
+    for t in cfg.tickers:
+        print(f"{t:5} +{added[t]:5} rows   history from {firsts.get(t, '-')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("info", help="show the loaded configuration").set_defaults(func=cmd_info)
+    sub.add_parser("prices", help="fetch new daily prices into the cache").set_defaults(
+        func=cmd_prices
+    )
     return parser
 
 
