@@ -48,7 +48,20 @@ class Config:
         return [self.benchmark, *(a.ticker for a in self.assets)]
 
 
+def load_dotenv(path: Path = REPO_ROOT / ".env") -> None:
+    """Load KEY=value lines from the gitignored .env into os.environ (real env vars win)."""
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
 def load_config(path: Path | str = DEFAULT_CONFIG) -> Config:
+    load_dotenv()
     raw = tomllib.loads(Path(path).read_text())
     es = raw["event_study"]
     # TREMOR_DB overrides the configured path (the deployed container keeps it on a volume).

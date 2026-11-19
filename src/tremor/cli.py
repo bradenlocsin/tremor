@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from tremor.config import load_config
+from tremor.config import load_config, load_dotenv
 
 
 def cmd_info(args: argparse.Namespace) -> int:
@@ -281,6 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

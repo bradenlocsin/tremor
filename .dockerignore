@@ -9,3 +9,4 @@ worldmonitor
 __pycache__
 *.pyc
 docs/charts
+.env
