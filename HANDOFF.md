@@ -16,9 +16,11 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | Issue | State | Notes |
 |---|---|---|
 | #2 skeleton | done (PR #18) | `uv sync --extra dev`, `uv run tremor info`, `uv run pytest -m "not network"` |
-| #3 prices | done | `uv run tremor prices` fills `data/tremor.sqlite`; BDRY history starts 2018-03-22 |
+| #3 prices | done (PR #19) | `uv run tremor prices` fills `data/tremor.sqlite`; BDRY history starts 2018-03-22 |
+| #7 taxonomy | done | `config/taxonomy.toml`; CAMEO codes need checking against real GDELT data in #8 |
 
 ## Log
 
 - 2026-11-19 (Claude): created this file and armed the Codex handoff watchdog (it fires after 90 minutes with no file changes in the repo). Starting #2.
 - 2026-11-19 00:10 (Claude): #2 merged; #3 prices + cache done (yfinance, non-commercial tag).
+- 2026-11-19 00:12 (Claude): #7 taxonomy (12 Event types, 6 Regions) done. CAMEO codes are from memory of the CAMEO codebook; verify against real GDELT rows in #8.
