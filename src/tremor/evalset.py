@@ -175,7 +175,7 @@ def score(
         record_spend(conn, usage, "eval")
         pred_real = bool(result.is_real_event and result.event_type != "none")
         real_hits += pred_real == bool(is_real)
-        region_hits += cand["region"] == label_region
+        region_hits += bool(result.in_region) == (label_region == cand["region"])
         if is_real:
             type_total += 1
             type_hits += result.event_type == label_type
