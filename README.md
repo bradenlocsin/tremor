@@ -10,6 +10,12 @@
 
 How did markets react in the 20 trading days after Red Sea shipping attacks, beyond what the overall market explains? Based on 6 hand-verified Events, too few to be statistically meaningful yet (the minimum is 8). The GDELT pipeline will supply the full history.
 
+## Case study
+
+**[The 2023–24 Red Sea crisis: what TREMOR would have said, and how it did](docs/case-study-red-sea.md)** (draft; back-test results pending)
+
+![Red Sea shipping before and after the 2023–24 attacks](docs/charts/red-sea-chokepoints-light.png)
+
 ## Quick start
 
 ```bash
