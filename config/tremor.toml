@@ -1,0 +1,59 @@
+# TREMOR configuration. See GLOSSARY.md for terms.
+
+[storage]
+# SQLite, not DuckDB: the hourly/daily jobs write while Streamlit reads, and SQLite (WAL mode)
+# handles multiple processes cleanly; DuckDB allows only one writing process (see ADR-0013 note).
+path = "data/tremor.sqlite"
+
+[benchmark]
+ticker = "SPY"
+
+# First-slice Asset universe (ADR-0021). The full 30–50 ETF universe comes later.
+[[assets]]
+ticker = "BNO"
+name = "United States Brent Oil Fund"
+category = "commodity: oil"
+
+[[assets]]
+ticker = "GLD"
+name = "SPDR Gold Shares"
+category = "commodity: gold"
+
+[[assets]]
+ticker = "ITA"
+name = "iShares U.S. Aerospace & Defense ETF"
+category = "sector: defense"
+
+[[assets]]
+ticker = "BDRY"
+name = "Breakwave Dry Bulk Shipping ETF"
+category = "sector: shipping (freight proxy)"
+
+[[assets]]
+ticker = "UUP"
+name = "Invesco DB US Dollar Index Bullish Fund"
+category = "fx: US dollar"
+
+[event_study]
+# ADR-0010
+estimation_window_days = 120
+# gap between the end of the estimation window and day -1, so the Event can't leak into the model fit
+estimation_gap_days = 10
+window_start = -1
+window_end = 20
+headline_days = [1, 5, 20]
+significance_level = 0.05
+# ADR-0011
+min_comparables = 8
+# ADR-0020
+episode_gap_trading_days = 10
+
+[models]
+# ADR-0022. IDs live here so a tier can change without code edits.
+refinement = "claude-haiku-5-5"
+rationale = "claude-sonnet-5-5"
+
+[budget]
+# ADR-0015, ADR-0017. US dollars.
+daily_llm_usd = 2.00
+backfill_llm_usd = 20.00
