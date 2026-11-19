@@ -117,6 +117,46 @@ def cmd_refine(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_recommend(args: argparse.Namespace) -> int:
+    import os
+
+    from tremor.analysis import analyze_event, episodes_for
+    from tremor.events import load_events
+    from tremor.prices import load_prices
+    from tremor.recommend import ClaudeExplainer, FakeExplainer, recommend, save_recommendations
+    from tremor.storage import connect
+
+    cfg = load_config()
+    if not cfg.recommendations_enabled:
+        print("Recommendations are switched off in config/tremor.toml (ADR-0004).")
+        return 0
+    conn = connect(cfg.storage_path)
+    prices = load_prices(conn, cfg.tickers)
+    events = load_events(conn)
+    episodes = episodes_for(events, prices, cfg)
+    if args.fake:
+        explainer = FakeExplainer()
+    elif os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        explainer = ClaudeExplainer(cfg.rationale_model)
+    else:
+        explainer = None
+        print("(no Anthropic credentials: deterministic Recommendations only, no rationale)")
+    by_id = {e.id: e for e in events}
+    targets = [ep.first for ep in episodes][-args.latest:]
+    for target in targets:
+        analysis = analyze_event(target, events, prices, cfg, episodes)
+        recs = recommend(analysis, by_id, explainer, conn)
+        save_recommendations(conn, recs)
+        print(f"{target.occurred_on} {target.title[:70]}")
+        for r in recs:
+            if r.exists:
+                print(f"   {r.asset:5} {r.stance:11} {r.horizon_days:2}d  CAR {r.mean_car*100:+.2f}%"
+                      f"  N={r.n}  Confidence {r.confidence}")
+            else:
+                print(f"   {r.asset:5} no Recommendation: {r.no_rec_reason}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -146,6 +186,10 @@ def build_parser() -> argparse.ArgumentParser:
     rf.add_argument("--since", default=None, help="only Candidates on/after this ISO date")
     rf.add_argument("--limit", type=int, default=None)
     rf.set_defaults(func=cmd_refine)
+    rc = sub.add_parser("recommend", help="Recommendations for the latest Episode starts")
+    rc.add_argument("--latest", type=int, default=3)
+    rc.add_argument("--fake", action="store_true", help="template rationale instead of Claude")
+    rc.set_defaults(func=cmd_recommend)
     return parser
 
 
