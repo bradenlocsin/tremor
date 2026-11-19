@@ -69,6 +69,13 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_labels)")}
     if "labeled_by" not in cols:
         conn.execute("ALTER TABLE eval_labels ADD COLUMN labeled_by TEXT NOT NULL DEFAULT 'author'")
+    run_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_runs)")}
+    for col in ("keep_precision", "keep_recall"):
+        if col not in run_cols:
+            conn.execute(f"ALTER TABLE eval_runs ADD COLUMN {col} REAL")
+    pred_cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_predictions)")}
+    if "in_region" not in pred_cols:
+        conn.execute("ALTER TABLE eval_predictions ADD COLUMN in_region INTEGER")
 
 
 def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7) -> int:
@@ -147,6 +154,10 @@ class EvalScore:
     type_accuracy: float | None
     region_accuracy: float | None
     noise_rejection: float | None
+    # What the pipeline actually keeps (real, tracked type, in Region) vs what the labels say it
+    # should keep. Precision: kept Events that are right (type included). Recall: right ones kept.
+    keep_precision: float | None = None
+    keep_recall: float | None = None
 
 
 def _ratio(hits: int, total: int) -> float | None:
@@ -167,6 +178,7 @@ def score(
         " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0"
     ).fetchall()
     real_hits = type_hits = type_total = region_hits = noise_hits = noise_total = 0
+    kept = kept_right = should = should_kept = 0
     kwargs = {"fetch": fetch} if fetch else {}
     for cand_json, is_real, label_type, label_region in rows:
         cand = json.loads(cand_json)
@@ -176,20 +188,33 @@ def score(
         pred_real = bool(result.is_real_event and result.event_type != "none")
         real_hits += pred_real == bool(is_real)
         region_hits += bool(result.in_region) == (label_region == cand["region"])
+        keep = pred_real and bool(result.in_region)
+        should_keep = bool(is_real) and label_region == cand["region"]
+        kept += keep
+        kept_right += keep and should_keep and result.event_type == label_type
+        should += should_keep
+        should_kept += keep and should_keep
         if is_real:
             type_total += 1
             type_hits += result.event_type == label_type
         else:
             noise_total += 1
             noise_hits += not pred_real
-        conn.execute("INSERT INTO eval_predictions VALUES (?, ?, ?, ?)",
-                     (run_id, cand["source_url"], int(pred_real), result.event_type))
+        conn.execute(
+            "INSERT INTO eval_predictions (run_id, source_url, is_real, event_type, in_region)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (run_id, cand["source_url"], int(pred_real), result.event_type,
+             int(bool(result.in_region))))
     s = EvalScore(run_id, len(rows), _ratio(real_hits, len(rows)), _ratio(type_hits, type_total),
-                  _ratio(region_hits, len(rows)), _ratio(noise_hits, noise_total))
+                  _ratio(region_hits, len(rows)), _ratio(noise_hits, noise_total),
+                  _ratio(kept_right, kept), _ratio(should_kept, should))
     conn.execute(
-        "INSERT INTO eval_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO eval_runs (run_id, model, prompt_hash, taxonomy_version, n, real_accuracy,"
+        " type_accuracy, region_accuracy, noise_rejection, created_at, keep_precision,"
+        " keep_recall) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (run_id, refiner.model, prompt_hash, tax.version, s.n, s.real_accuracy, s.type_accuracy,
-         s.region_accuracy, s.noise_rejection, datetime.now(UTC).isoformat(timespec="seconds")),
+         s.region_accuracy, s.noise_rejection, datetime.now(UTC).isoformat(timespec="seconds"),
+         s.keep_precision, s.keep_recall),
     )
     conn.commit()
     return s
