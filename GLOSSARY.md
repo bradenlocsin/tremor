@@ -102,6 +102,10 @@ _Avoid_: "signal" when you mean a Recommendation. A signal should only mean an i
 
 About 100 Candidates labeled blind (real vs. noise, Event type, Region). Labeled by a Codex model panel of labeler, skeptic and judge, which the author can override by hand (ADR-0025). Used to score LLM refinement on every prompt or model change (ADR-0019).
 
+## Audit
+
+A blind re-check of a random sample of the history refinement by a second model family (Gemini, via Antigravity CLI). It reports how often the two models agree on keep vs. reject, with Cohen's kappa. Agreement is not accuracy, but low agreement is a warning (ADR-0029).
+
 ## Track record
 
 TREMOR's scored history of Recommendations: back-tested over historical Events without look-ahead, plus live Recommendations once their horizon passes (ADR-0018).

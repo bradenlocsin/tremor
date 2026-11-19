@@ -7,9 +7,7 @@ which is deployable as a pay-per-use API.
 
 from __future__ import annotations
 
-import json
-
-from tremor.panel import DEFAULT_MODEL, run_codex
+from tremor.panel import AGY_MODEL, DEFAULT_MODEL, run_agy, run_codex
 from tremor.refine import Refinement, Usage
 
 _FIELDS = {
@@ -37,9 +35,10 @@ def schema() -> dict:
 class CodexRefiner:
     batch_size = 10
     free = True  # subscription usage: no Anthropic spend, so the paid budget cap doesn't apply
+    prefix = "codex"
 
     def __init__(self, model: str = DEFAULT_MODEL, codex=run_codex):
-        self.model = f"codex:{model}"
+        self.model = f"{self.prefix}:{model}"
         self._codex_model = model
         self._codex = codex
 
@@ -62,7 +61,8 @@ class CodexRefiner:
         results = []
         for i in range(len(prompts)):
             if ids.count(i) != 1:  # missing or duplicated: never guess which row belongs here
-                results.append((RuntimeError(f"Codex returned {ids.count(i)} results for item {i}"),
+                results.append((RuntimeError(f"{self.prefix} returned {ids.count(i)} results "
+                                             f"for item {i}"),
                                 None))
                 continue
             r = by_id[i]
@@ -71,3 +71,13 @@ class CodexRefiner:
             r["severity"] = min(5, max(1, r["severity"]))
             results.append((Refinement(**r), usage))
         return results
+
+
+class AgyRefiner(CodexRefiner):
+    """The same batched refinement on Antigravity CLI (Gemini, from the author's Google AI plan):
+    a second subscription engine, and a different model family from Codex."""
+
+    prefix = "agy"
+
+    def __init__(self, model: str = AGY_MODEL, codex=run_agy):
+        super().__init__(model, codex)

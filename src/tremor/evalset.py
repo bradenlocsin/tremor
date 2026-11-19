@@ -15,6 +15,7 @@ import hashlib
 import json
 import random
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -178,8 +179,37 @@ def _ratio(hits: int, total: int) -> float | None:
     return hits / total if total else None
 
 
+def _predict(refiner, system: str, prompts: list[str], workers: int) -> list[tuple]:
+    """(result, usage) per prompt, in order; batched and parallel when the refiner supports it.
+    A failed item comes back as (exception, None) and is left out of the score."""
+    def one(p):
+        try:
+            return refiner.refine(system, p)
+        except Exception as e:
+            if getattr(e, "fatal", False):
+                raise
+            return e, None
+
+    size = getattr(refiner, "batch_size", 0)
+    if not size:
+        return [one(p) for p in prompts]
+    chunks = [prompts[i:i + size] for i in range(0, len(prompts), size)]
+
+    def batch(ch):
+        try:
+            return refiner.refine_batch(system, ch)
+        except Exception as e:
+            if getattr(e, "fatal", False):
+                raise
+            return [(e, None)] * len(ch)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [r for out in pool.map(batch, chunks) for r in out]
+
+
 def score(
     conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, refiner: Refiner, fetch=None,
+    workers: int = 4,
 ) -> EvalScore:
     """Score `refiner` on every confidently labeled item. Writes no Events."""
     ensure_schema(conn)
@@ -195,10 +225,19 @@ def score(
     real_hits = type_hits = type_total = region_hits = noise_hits = noise_total = 0
     kept = kept_right = should = should_kept = 0
     kwargs = {"fetch": fetch} if fetch else {}
-    for cand_json, is_real, label_type, label_region in rows:
-        cand = json.loads(cand_json)
-        article = fetch_article(cand["source_url"], cand["event_date"], **kwargs)
-        result, usage = refiner.refine(system, user_prompt(cand, article))
+    cands = [json.loads(r[0]) for r in rows]
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        articles = list(pool.map(
+            lambda c: fetch_article(c["source_url"], c["event_date"], **kwargs), cands))
+    prompts = [user_prompt(c, a) for c, a in zip(cands, articles)]
+    preds = _predict(refiner, system, prompts, workers)
+    scored = 0
+    for (cand_json, is_real, label_type, label_region), cand, (result, usage) in zip(
+            rows, cands, preds):
+        if isinstance(result, Exception):
+            print(f"  skipped {cand['source_url']}: {result}")
+            continue
+        scored += 1
         record_spend(conn, usage, "eval")
         # Same keep predicate as refinement: real, a taxonomy id, and (for keeping) in Region.
         pred_real = bool(result.is_real_event and result.event_type in valid_types)
@@ -222,8 +261,8 @@ def score(
             (run_id, cand["source_url"], int(pred_real), result.event_type,
              int(bool(result.in_region))))
         conn.commit()  # never hold the write lock across slow article fetches and LLM calls
-    s = EvalScore(run_id, len(rows), _ratio(real_hits, len(rows)), _ratio(type_hits, type_total),
-                  _ratio(region_hits, len(rows)), _ratio(noise_hits, noise_total),
+    s = EvalScore(run_id, scored, _ratio(real_hits, scored), _ratio(type_hits, type_total),
+                  _ratio(region_hits, scored), _ratio(noise_hits, noise_total),
                   _ratio(kept_right, kept), _ratio(should_kept, should))
     conn.execute(
         "INSERT INTO eval_runs (run_id, model, prompt_hash, taxonomy_version, n, real_accuracy,"

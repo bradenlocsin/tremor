@@ -361,7 +361,7 @@ def record_spend(conn: sqlite3.Connection, usage: Usage, purpose: str) -> None:
 
 def pick_candidates(
     conn: sqlite3.Connection, region: str, per_day_per_type: int, since: str | None = None,
-    limit: int | None = None, taxonomy_version: int = 0,
+    limit: int | None = None, taxonomy_version: int = 0, oldest_first: bool = False,
 ) -> list[dict]:
     """Source URLs to refine: the most-covered URLs per day and type that are new, or were last
     refined under an older taxonomy version.
@@ -390,7 +390,8 @@ def pick_candidates(
             PARTITION BY event_date, candidate_types ORDER BY coverage DESC) AS rk
           FROM urls
         )
-        SELECT * FROM ranked WHERE rk <= ? AND todo = 1 ORDER BY event_date DESC, coverage DESC
+        SELECT * FROM ranked WHERE rk <= ? AND todo = 1
+        ORDER BY event_date {"ASC" if oldest_first else "DESC"}, coverage DESC
         """,
         (taxonomy_version, region, since, since, per_day_per_type),
     ).fetchall()
@@ -416,6 +417,7 @@ def refine_candidates(
     fetch=_get,
     log=print,
     workers: int = 4,
+    oldest_first: bool = False,
 ) -> dict[str, int]:
     conn.executescript(SPEND_SCHEMA)
     cap = cfg.backfill_llm_usd if purpose == "backfill" else cfg.daily_llm_usd
@@ -497,7 +499,8 @@ def refine_candidates(
     batch = getattr(refiner, "batch_size", 1)
     step = workers * batch
     free = bool(getattr(refiner, "free", False))  # zero-cost engines ignore the paid cap
-    todo = pick_candidates(conn, region, per_day_per_type, since, limit, tax.version)
+    todo = pick_candidates(conn, region, per_day_per_type, since, limit, tax.version,
+                           oldest_first)
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as pool, \
             ThreadPoolExecutor(max_workers=16) as fetchers:

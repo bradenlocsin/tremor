@@ -1,4 +1,8 @@
-"""Keep the Codex history backfill going across Codex usage windows (ADR-0027).
+"""Keep a subscription history backfill going across usage windows (ADR-0027, ADR-0029).
+
+`--engine codex` (default) refines newest-first with Codex CLI; `--engine agy` refines
+oldest-first with Gemini on Antigravity CLI, so two supervisors can run at once and meet in the
+middle. Each engine has its own log and stop file: data/<engine>-supervisor.{log,stop}.
 
 Runs `tremor refine --backfill --engine codex` until no Candidates are left. When Codex hits its
 usage limit (the refine command exits 75), the supervisor waits, checking Codex every 15 minutes
@@ -9,8 +13,8 @@ reset. It sends a phone alert when the limit looks like the weekly one (the rese
 Alerts: iMessage to TREMOR_NOTIFY_IMESSAGE (needs Messages automation permission, granted once),
 and/or ntfy to TREMOR_NOTIFY_NTFY_TOPIC. Both are read from the gitignored .env.
 
-Run (from the repo root):  nohup caffeinate -i uv run python scripts/codex_supervisor.py &
-Stop:                      touch data/codex-supervisor.stop
+Run (from the repo root):  nohup caffeinate -i uv run python scripts/codex_supervisor.py [--engine agy] &
+Stop:                      touch data/<engine>-supervisor.stop
 """
 
 from __future__ import annotations
@@ -25,9 +29,13 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 REPO = Path(__file__).resolve().parents[1]
-LOG = REPO / "data" / "codex-supervisor.log"
-STOP = REPO / "data" / "codex-supervisor.stop"
-REFINE = ["uv", "run", "tremor", "refine", "--backfill", "--engine", "codex", "--workers", "6"]
+ENGINE = "agy" if "--engine" in sys.argv and sys.argv[sys.argv.index("--engine") + 1] == "agy" \
+    else "codex"
+LOG = REPO / "data" / f"{ENGINE}-supervisor.log"
+STOP = REPO / "data" / f"{ENGINE}-supervisor.stop"
+AGY_MODEL = "gemini-3.8-flash-medium"  # best precision/recall/speed balance on the Eval set
+REFINE = ["uv", "run", "tremor", "refine", "--backfill", "--engine", ENGINE, "--workers", "6"] + (
+    ["--model", AGY_MODEL, "--oldest-first"] if ENGINE == "agy" else [])
 POLL = 15 * 60
 WEEKLY_AFTER = timedelta(hours=6)
 
@@ -82,6 +90,12 @@ def remaining() -> int:
 
 
 def codex_ok() -> bool:
+    """Is the engine usable again? One tiny prompt."""
+    if ENGINE == "agy":
+        r = subprocess.run(["agy", "-p", "Reply with: ok", "--model", AGY_MODEL,
+                            "--print-timeout", "120s"], stdin=subprocess.DEVNULL, cwd="/tmp",
+                           capture_output=True, text=True, timeout=300)
+        return r.returncode == 0 and "ok" in r.stdout.lower()
     r = subprocess.run(["codex", "exec", "-m", "gpt-6.2-sol", "-s", "read-only", "--ephemeral",
                         "--skip-git-repo-check", "-C", "/tmp", "-"], input="Reply with: ok",
                        capture_output=True, text=True, timeout=300)
@@ -110,14 +124,14 @@ def reset_time(message: str, now: datetime) -> datetime | None:
 def main() -> int:
     load_dotenv()
     os.chdir(REPO)
-    log(f"supervisor started (pid {os.getpid()}); {remaining()} Candidates to refine")
+    log(f"{ENGINE} supervisor started (pid {os.getpid()}); {remaining()} Candidates to refine")
     stalls = 0
     weekly_alerted = False
     while not STOP.exists():
         before = remaining()
         if before == 0:
-            notify("TREMOR: the Codex history refinement is finished. Every Candidate is "
-                   "refined; next step is `tremor recommend` and `tremor backtest`.")
+            notify(f"TREMOR: the history refinement is finished ({ENGINE} saw none left). "
+                   "Every Candidate is refined; next step is `tremor recommend` and `tremor backtest`.")
             return 0
         log(f"starting refine ({before} left)")
         with LOG.open("a") as f:
@@ -132,7 +146,11 @@ def main() -> int:
             now = datetime.now()
             when = reset_time(msg, now)
             log(f"usage limit: {msg} (resets {when or 'unknown'})")
-            if when and when - now > WEEKLY_AFTER and not weekly_alerted:
+            if ENGINE == "agy" and not weekly_alerted:
+                notify(f"TREMOR: Gemini (Antigravity) hit a usage limit; {after} articles left. "
+                       "It retries every 15 minutes, nothing to do.")
+                weekly_alerted = True
+            elif when and when - now > WEEKLY_AFTER and not weekly_alerted:
                 notify(f"TREMOR: Codex hit its WEEKLY limit (resets {when:%a %b %-d %-I:%M %p}). "
                        f"{after} articles left. If you want it to keep going now, use one of "
                        "your weekly resets; the backfill resumes within 15 minutes.")
@@ -147,7 +165,7 @@ def main() -> int:
         if before - after == 0:
             stalls += 1
             if stalls >= 3:
-                notify(f"TREMOR: the Codex backfill stopped making progress ({after} left, last "
+                notify(f"TREMOR: the {ENGINE} backfill stopped making progress ({after} left, last "
                        f"exit {proc.returncode}). Check data/codex-supervisor.log.")
                 return 1
             time.sleep(60)
