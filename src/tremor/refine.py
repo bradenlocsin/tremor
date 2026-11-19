@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from tremor.config import Config
 from tremor.events import Event, save_events
+from tremor.gdelt import FRESH_SQL
 from tremor.taxonomy import Taxonomy
 
 USER_AGENT = "Mozilla/5.0 (compatible; tremor-research/0.1)"
@@ -329,6 +330,7 @@ def pick_candidates(
                  SUM(num_articles) AS coverage
           FROM candidates
           WHERE status = 'new' AND region = ? AND (? IS NULL OR event_date >= ?)
+            AND {fresh}
           GROUP BY source_url
         ), ranked AS (
           SELECT *, ROW_NUMBER() OVER (
@@ -336,7 +338,7 @@ def pick_candidates(
           FROM urls
         )
         SELECT * FROM ranked WHERE rk <= ? ORDER BY event_date DESC, coverage DESC
-        """,
+        """.format(fresh=FRESH_SQL),
         (region, since, since, per_day_per_type),
     ).fetchall()
     conn.row_factory = None

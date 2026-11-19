@@ -42,3 +42,12 @@ def test_pages_render_with_real_data(monkeypatch):
     at.radio(key="page").set_value("Track record").run()
     assert not at.exception, at.exception
     assert any("Track record" in h.value for h in at.subheader)
+
+
+def test_label_page_renders(monkeypatch):
+    monkeypatch.setenv("TREMOR_PASSCODE", "s3cret")
+    at = AppTest.from_file(APP, default_timeout=120).run()
+    at.text_input[0].input("s3cret").run()
+    at.radio(key="page").set_value("Label (Eval set)").run()
+    assert not at.exception, at.exception
+    assert any("Label the Eval set" in h.value for h in at.subheader)
