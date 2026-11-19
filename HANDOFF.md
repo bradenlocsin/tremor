@@ -15,8 +15,10 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 
 | Issue | State | Notes |
 |---|---|---|
-| #2 skeleton | starting | |
+| #2 skeleton | done (PR #18) | `uv sync --extra dev`, `uv run tremor info`, `uv run pytest -m "not network"` |
+| #3 prices | done | `uv run tremor prices` fills `data/tremor.sqlite`; BDRY history starts 2018-03-22 |
 
 ## Log
 
 - 2026-11-19 (Claude): created this file and armed the Codex handoff watchdog (it fires after 90 minutes with no file changes in the repo). Starting #2.
+- 2026-11-19 00:10 (Claude): #2 merged; #3 prices + cache done (yfinance, non-commercial tag).
