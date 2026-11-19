@@ -13,6 +13,8 @@ dependencies = [
     "matplotlib>=3.8",
     "anthropic>=2.10.0",
     "pydantic>=2.14.3",
+    "streamlit>=1.67.0",
+    "plotly>=7.1.0",
 ]
 
 [project.optional-dependencies]

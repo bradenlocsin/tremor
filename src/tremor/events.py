@@ -35,6 +35,8 @@ class Event:
     taxonomy_version: int | None = None
     severity: int | None = None
     assets: tuple[str, ...] = field(default_factory=tuple)
+    lat: float | None = None
+    lon: float | None = None
 
 
 def load_seed_events(path: Path = SEED_PATH, taxonomy: Taxonomy | None = None) -> list[Event]:
@@ -64,6 +66,8 @@ def load_seed_events(path: Path = SEED_PATH, taxonomy: Taxonomy | None = None) -
                 origin="seed",
                 refinement_path="seed",
                 taxonomy_version=tax.version,
+                lat=e["lat"],
+                lon=e["lon"],
             )
         )
     return events
@@ -72,7 +76,7 @@ def load_seed_events(path: Path = SEED_PATH, taxonomy: Taxonomy | None = None) -
 COLUMNS = (
     "id", "title", "event_type", "region", "occurred_on", "reported_at", "actors", "summary",
     "source_url", "source_name", "license", "fidelity", "origin", "refinement_path", "model",
-    "taxonomy_version", "severity", "assets",
+    "taxonomy_version", "severity", "assets", "lat", "lon",
 )
 
 
@@ -82,7 +86,7 @@ def save_events(conn: sqlite3.Connection, events: list[Event]) -> int:
             e.id, e.title, e.event_type, e.region, e.occurred_on.isoformat(), e.reported_at,
             json.dumps(list(e.actors)), e.summary, e.source_url, e.source_name, e.license,
             e.fidelity, e.origin, e.refinement_path, e.model, e.taxonomy_version, e.severity,
-            json.dumps(list(e.assets)),
+            json.dumps(list(e.assets)), e.lat, e.lon,
         )
         for e in events
     ]

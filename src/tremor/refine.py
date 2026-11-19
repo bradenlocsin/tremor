@@ -325,6 +325,7 @@ def pick_candidates(
         WITH urls AS (
           SELECT source_url, MIN(event_date) AS event_date, candidate_types,
                  MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
+                 AVG(lat) AS lat, AVG(lon) AS lon,
                  SUM(num_articles) AS coverage
           FROM candidates
           WHERE status = 'new' AND region = ? AND (? IS NULL OR event_date >= ?)
@@ -406,6 +407,8 @@ def refine_candidates(
                 taxonomy_version=tax.version,
                 severity=result.severity,
                 assets=tuple(t for t in result.affected_assets if t in tickers),
+                lat=cand.get("lat"),
+                lon=cand.get("lon"),
             )])
             status = "refined"
             stats["events"] += 1
