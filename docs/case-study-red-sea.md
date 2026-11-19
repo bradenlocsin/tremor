@@ -20,7 +20,7 @@ Daily transits through the three chokepoints that matter here (7-day average, fr
 | **Suez Canal** | 80/day (+7%) | **44/day (−38%)** | 37/day |
 | **Cape of Good Hope** | 50/day (−5%) | **70/day (+30%)** | 92/day |
 
-Traffic didn't stop. It **rerouted around Africa**, adding roughly 10–14 days to Asia–Europe voyages. That diversion is the economic mechanism behind the market moves TREMOR measures.
+Traffic didn't stop. It **rerouted around Africa**, as the Cape of Good Hope numbers show. That much longer route is the economic mechanism behind the market moves TREMOR measures.
 
 ## The Events
 
