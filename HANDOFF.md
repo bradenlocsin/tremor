@@ -25,7 +25,8 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 | #9 LLM refinement | code merged (PR #25); issue reopened until a real run (needs API key) | `uv run tremor refine --fake` (dry run); with a key: `uv run tremor refine --backfill` |
 | #11 Episodes | done (PR #26) | `tremor.episodes`, `tremor.analysis.analyze_event()` |
 | #12 Recommendations | done (PR #27) | `uv run tremor recommend [--fake]`; switch: `[recommendations] enabled` in config |
-| #13 back-test | done | `uv run tremor backtest`; needs refined Events to produce calls |
+| #13 back-test | done (PR #28) | `uv run tremor backtest`; needs refined Events to produce calls |
+| #14 dashboard | done | `TREMOR_PASSCODE=x uv run streamlit run src/tremor/dashboard/app.py` |
 
 ## Log
 
@@ -40,3 +41,4 @@ Running log so any agent (Claude Code or Codex) can continue TREMOR's overnight 
 - 2026-11-19 00:25 (Claude): #11 Episodes done; Comparables are now Episode starts (tremor.analysis). #9 reopened: code merged, real refinement run waits on an API key.
 - 2026-11-19 00:26 (Claude): #12 Recommendations done (deterministic stance/horizon/confidence, Sonnet rationale via messages.parse, downgrade-only, on/off switch). On seed data: correctly no Recommendations (N<8).
 - 2026-11-19 00:28 (Claude): #13 back-test done (prices cut before each Event's day 0; a flip test proves no look-ahead). Real data: 0 calls until refined GDELT Events exist.
+- 2026-11-19 00:31 (Claude): #14 dashboard done (Streamlit, passcode gate, Plotly CAR chart with hover, Recommendation cards, map, Track record page). Headless AppTest covers lock/unlock and page switching. Added live-Recommendation scoring (tremor.scoring) that #13's PR text promised.

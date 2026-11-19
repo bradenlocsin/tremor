@@ -16,6 +16,17 @@ How did markets react in the 20 trading days after Red Sea shipping attacks, bey
 uv sync --extra dev        # install (Python 3.12)
 uv run tremor info         # show configuration
 uv run pytest -m "not network"
+
+# data
+uv run tremor prices                 # daily prices (yfinance)
+uv run tremor seed                   # 12 hand-verified Red Sea Events
+uv run tremor gdelt backfill         # GDELT Candidates 2015 → today (hours; resumable)
+uv run tremor refine --backfill      # LLM refinement (needs ANTHROPIC_API_KEY)
+uv run tremor recommend              # Recommendations for the latest Episodes
+uv run tremor backtest               # Track record
+
+# dashboard (passcode-protected)
+TREMOR_PASSCODE=choose-one uv run streamlit run src/tremor/dashboard/app.py
 ```
 
 ## Docs

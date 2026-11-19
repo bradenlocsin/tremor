@@ -46,6 +46,8 @@ EVENT_COLUMNS_V2 = {
     "taxonomy_version": "INTEGER",
     "severity": "INTEGER",
     "assets": "TEXT",               # JSON list of tickers the refinement linked
+    "lat": "REAL",
+    "lon": "REAL",
 }
 
 

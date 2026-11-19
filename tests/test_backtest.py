@@ -57,3 +57,24 @@ def test_save(tmp_path):
     calls = run_backtest(events(), market(EVENT_DAYS), CFG)
     save_backtest(conn, calls)
     assert conn.execute("SELECT COUNT(*) FROM backtest").fetchone()[0] == len(calls)
+
+
+def test_live_recommendations_get_scored_after_their_horizon(tmp_path):
+    from tremor.analysis import analyze_event
+    from tremor.events import save_events
+    from tremor.prices import update_prices
+    from tremor.recommend import recommend, save_recommendations
+    from tremor.scoring import score_live
+
+    px = market(EVENT_DAYS)
+    evs = events()
+    target = evs[-1]  # its window finished long before the synthetic data ends
+    a = analyze_event(target, evs, px, CFG)
+    recs = recommend(a, {e.id: e for e in evs}, None)
+    conn = connect(tmp_path / "t.sqlite")
+    save_events(conn, evs)
+    save_recommendations(conn, recs)
+    assert score_live(conn, px, CFG) == sum(r.exists for r in recs) > 0
+    assert score_live(conn, px, CFG) == 0  # already scored
+    hit = conn.execute("SELECT hit FROM rec_scores").fetchone()[0]
+    assert hit == 1

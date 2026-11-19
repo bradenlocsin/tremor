@@ -167,7 +167,11 @@ def cmd_backtest(args: argparse.Namespace) -> int:
     conn = connect(cfg.storage_path)
     calls = run_backtest(load_events(conn), load_prices(conn, cfg.tickers), cfg)
     save_backtest(conn, calls)
-    print(f"{len(calls)} back-tested calls (deterministic Stance/Confidence, no look-ahead)")
+    from tremor.scoring import score_live
+
+    scored = score_live(conn, load_prices(conn, cfg.tickers), cfg)
+    print(f"{len(calls)} back-tested calls (deterministic Stance/Confidence, no look-ahead); "
+          f"{scored} live Recommendations newly scored")
     if calls:
         print(summarize(calls).to_string(index=False, float_format=lambda x: f"{x:.3f}"))
     return 0
