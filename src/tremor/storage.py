@@ -39,10 +39,25 @@ CREATE TABLE IF NOT EXISTS events (
 """
 
 
+# Columns added after the first release; connect() adds any that are missing.
+EVENT_COLUMNS_V2 = {
+    "refinement_path": "TEXT",      # seed | live | wayback | gdelt-only
+    "model": "TEXT",                # refinement model id
+    "taxonomy_version": "INTEGER",
+    "severity": "INTEGER",
+    "assets": "TEXT",               # JSON list of tickers the refinement linked
+}
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(events)")}
+    for col, typ in EVENT_COLUMNS_V2.items():
+        if col not in have:
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col} {typ}")
+    conn.commit()
     return conn

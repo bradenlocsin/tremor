@@ -30,6 +30,11 @@ class Event:
     license: str = "commercial"
     fidelity: str = "full"
     origin: str = "seed"
+    refinement_path: str | None = "seed"
+    model: str | None = None
+    taxonomy_version: int | None = None
+    severity: int | None = None
+    assets: tuple[str, ...] = field(default_factory=tuple)
 
 
 def load_seed_events(path: Path = SEED_PATH, taxonomy: Taxonomy | None = None) -> list[Event]:
@@ -57,9 +62,18 @@ def load_seed_events(path: Path = SEED_PATH, taxonomy: Taxonomy | None = None) -
                 license="commercial",
                 fidelity="full",
                 origin="seed",
+                refinement_path="seed",
+                taxonomy_version=tax.version,
             )
         )
     return events
+
+
+COLUMNS = (
+    "id", "title", "event_type", "region", "occurred_on", "reported_at", "actors", "summary",
+    "source_url", "source_name", "license", "fidelity", "origin", "refinement_path", "model",
+    "taxonomy_version", "severity", "assets",
+)
 
 
 def save_events(conn: sqlite3.Connection, events: list[Event]) -> int:
@@ -67,12 +81,15 @@ def save_events(conn: sqlite3.Connection, events: list[Event]) -> int:
         (
             e.id, e.title, e.event_type, e.region, e.occurred_on.isoformat(), e.reported_at,
             json.dumps(list(e.actors)), e.summary, e.source_url, e.source_name, e.license,
-            e.fidelity, e.origin,
+            e.fidelity, e.origin, e.refinement_path, e.model, e.taxonomy_version, e.severity,
+            json.dumps(list(e.assets)),
         )
         for e in events
     ]
     conn.executemany(
-        "INSERT OR REPLACE INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+        f"INSERT OR REPLACE INTO events ({', '.join(COLUMNS)})"
+        f" VALUES ({', '.join('?' * len(COLUMNS))})",
+        rows,
     )
     conn.commit()
     return len(rows)
@@ -95,5 +112,6 @@ def load_events(
         r = dict(zip(cols, row))
         r["occurred_on"] = date.fromisoformat(r["occurred_on"])
         r["actors"] = tuple(json.loads(r["actors"] or "[]"))
+        r["assets"] = tuple(json.loads(r.get("assets") or "[]"))
         out.append(Event(**r))
     return out

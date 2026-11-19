@@ -11,6 +11,8 @@ dependencies = [
     "scipy>=1.11",
     "yfinance>=0.2.40",
     "matplotlib>=3.8",
+    "anthropic>=2.10.0",
+    "pydantic>=2.14.3",
 ]
 
 [project.optional-dependencies]
