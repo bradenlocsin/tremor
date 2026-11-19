@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from tremor.config import load_config, load_dotenv
@@ -193,7 +194,17 @@ def cmd_eval(args: argparse.Namespace) -> int:
     gdelt.ensure_schema(conn)
     conn.executescript(SPEND_SCHEMA)
     if args.action == "sample":
-        print(f"added {evalset.sample(conn, 'red_sea', n=args.n)} items to the Eval set")
+        added = evalset.sample(conn, "red_sea", n=args.n, seed=args.seed, split=args.split)
+        print(f"added {added} {args.split} items to the Eval set")
+    elif args.action == "examples":
+        from tremor import panel
+        from tremor.refine import EXAMPLES_PATH
+
+        evalset.ensure_schema(conn)
+        picked = panel.select_examples(conn, n=args.n if args.n != 100 else 16)
+        EXAMPLES_PATH.write_text(json.dumps(picked, indent=2, ensure_ascii=False) + "\n")
+        kept = sum(e["keep"] for e in picked)
+        print(f"wrote {len(picked)} worked examples ({kept} kept Events) to {EXAMPLES_PATH}")
     elif args.action == "panel":
         from tremor import panel
 
@@ -281,9 +292,12 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_backtest
     )
     ev = sub.add_parser("eval", help="the Eval set: sample items, then score a refiner")
-    ev.add_argument("action", choices=["sample", "panel", "score", "progress"],
+    ev.add_argument("action", choices=["sample", "panel", "examples", "score", "progress"],
                     help="panel: label the Eval set with the Codex labeler/skeptic/judge panel")
     ev.add_argument("--n", type=int, default=100)
+    ev.add_argument("--split", choices=["test", "teach"], default="test",
+                    help="sample: 'teach' items supply worked examples and are never scored")
+    ev.add_argument("--seed", type=int, default=7)
     ev.add_argument("--fake", action="store_true")
     ev.add_argument("--model", default=None,
                     help="score: refinement model to compare; panel: Codex model")
