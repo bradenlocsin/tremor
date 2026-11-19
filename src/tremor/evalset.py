@@ -1,7 +1,10 @@
-"""The Eval set (ADR-0019): ~100 Candidates labeled blind by the author, used to score refinement.
+"""The Eval set (ADR-0019): ~100 Candidates labeled blind, used to score refinement.
+
+Labels come from the author (dashboard labeling page) or from the Codex model panel (ADR-0025,
+tremor.panel); eval_labels.labeled_by records which.
 
 * sample(): a stratified sample of distinct Candidate URLs (spread over years and GDELT types)
-* labels are entered on the dashboard's labeling page, never pre-filled by the model
+* labels are never pre-filled from TREMOR's own refinement output
 * score(): runs a refiner over the labeled items (writes nothing to Events) and records accuracy
   per field plus the noise-rejection rate, keyed by model, prompt hash and taxonomy version
 """
@@ -36,7 +39,8 @@ CREATE TABLE IF NOT EXISTS eval_labels (
     duplicate      INTEGER NOT NULL DEFAULT 0,
     unsure         INTEGER NOT NULL DEFAULT 0,
     note           TEXT,
-    labeled_at     TEXT NOT NULL
+    labeled_at     TEXT NOT NULL,
+    labeled_by     TEXT NOT NULL DEFAULT 'author'   -- 'author' or 'panel:<model>' (ADR-0025)
 );
 CREATE TABLE IF NOT EXISTS eval_runs (
     run_id            TEXT PRIMARY KEY,
@@ -62,6 +66,9 @@ CREATE TABLE IF NOT EXISTS eval_predictions (
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(eval_labels)")}
+    if "labeled_by" not in cols:
+        conn.execute("ALTER TABLE eval_labels ADD COLUMN labeled_by TEXT NOT NULL DEFAULT 'author'")
 
 
 def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7) -> int:
@@ -69,15 +76,15 @@ def sample(conn: sqlite3.Connection, region: str, n: int = 100, seed: int = 7) -
     ensure_schema(conn)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        """
+        f"""
         SELECT source_url, MIN(event_date) AS event_date, region, candidate_types,
                MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
                AVG(lat) AS lat, AVG(lon) AS lon, SUM(num_articles) AS coverage,
                substr(MIN(date_added), 1, 4) AS added_year
-        FROM candidates WHERE region = ? AND {fresh}
+        FROM candidates WHERE region = ? AND {FRESH_SQL}
           AND source_url NOT IN (SELECT source_url FROM eval_items)
         GROUP BY source_url
-        """.format(fresh=FRESH_SQL),
+        """,
         (region,),
     ).fetchall()
     conn.row_factory = None
@@ -121,13 +128,13 @@ def progress(conn: sqlite3.Connection) -> tuple[int, int]:
 
 def save_label(
     conn: sqlite3.Connection, source_url: str, is_real: bool | None, event_type: str,
-    region: str, duplicate: bool, note: str = "",
+    region: str, duplicate: bool, note: str = "", labeled_by: str = "author",
 ) -> None:
     conn.execute(
-        "INSERT OR REPLACE INTO eval_labels VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO eval_labels VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (source_url, None if is_real is None else int(is_real), event_type, region,
          int(duplicate), int(is_real is None), note,
-         datetime.now(UTC).isoformat(timespec="seconds")),
+         datetime.now(UTC).isoformat(timespec="seconds"), labeled_by),
     )
     conn.commit()
 
