@@ -40,6 +40,34 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_chart(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from tremor.charts import plot_study, save
+    from tremor.event_study import study
+    from tremor.events import load_events
+    from tremor.prices import load_prices
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    tax = default_taxonomy()
+    conn = connect(cfg.storage_path)
+    prices = load_prices(conn, cfg.tickers)
+    events = load_events(conn, event_type=args.type, region=args.region)
+    results = [
+        study(prices, events, a.ticker, cfg.benchmark, cfg.event_study) for a in cfg.assets
+    ]
+    title = f"{tax.event_type(args.type).name}s, {tax.region(args.region).name}: average CAR"
+    names = {a.ticker: a.category for a in cfg.assets}
+    out = Path(args.out)
+    for theme in ("light", "dark"):
+        path = out.with_name(f"{out.stem}-{theme}{out.suffix}")
+        save(plot_study(results, title, names, theme), path)
+        print(f"wrote {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tremor", description="Tracking Risk Events & Market Outcome Reactions"
@@ -50,6 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_prices
     )
     sub.add_parser("seed", help="load the hand-entered seed Events").set_defaults(func=cmd_seed)
+    chart = sub.add_parser("chart", help="save an event-study chart (light + dark PNG)")
+    chart.add_argument("--type", default="shipping_attack", help="Event type id")
+    chart.add_argument("--region", default="red_sea", help="Region id")
+    chart.add_argument("--out", default="docs/charts/event-study.png")
+    chart.set_defaults(func=cmd_chart)
     return parser
 
 

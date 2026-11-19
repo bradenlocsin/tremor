@@ -4,6 +4,12 @@
 
 > Work in progress. First slice: the Red Sea / Bab-el-Mandeb, five ETFs. See the [issues](https://github.com/bradenlocsin/tremor/issues/1).
 
+## First result
+
+![Average cumulative abnormal returns after Red Sea shipping attacks](docs/charts/red-sea-shipping-attacks-light.png)
+
+How did markets react in the 20 trading days after Red Sea shipping attacks, beyond what the overall market explains? Based on 6 hand-verified Events, too few to be statistically meaningful yet (the minimum is 8). The GDELT pipeline will supply the full history.
+
 ## Quick start
 
 ```bash
