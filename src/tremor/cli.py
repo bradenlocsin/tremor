@@ -194,6 +194,19 @@ def cmd_eval(args: argparse.Namespace) -> int:
     conn.executescript(SPEND_SCHEMA)
     if args.action == "sample":
         print(f"added {evalset.sample(conn, 'red_sea', n=args.n)} items to the Eval set")
+    elif args.action == "panel":
+        from tremor import panel
+
+        model = args.model or panel.DEFAULT_MODEL
+        tax = default_taxonomy().first_slice()
+        evalset.ensure_schema(conn)
+        print("fetching Eval set articles…")
+        items = panel.gather(conn)
+        print(f"running the Codex panel ({model}) on {len(items)} items…")
+        for lab in panel.run_panel(tax, items, codex=lambda p, s: panel.run_codex(p, s, model)):
+            evalset.save_label(conn, lab["source_url"], lab["is_real"], lab["event_type"],
+                               lab["region"], duplicate=False, note=lab["note"],
+                               labeled_by=f"panel:{model}")
     elif args.action == "score":
         if args.fake:
             refiner = FakeRefiner()
@@ -266,10 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_backtest
     )
     ev = sub.add_parser("eval", help="the Eval set: sample items, then score a refiner")
-    ev.add_argument("action", choices=["sample", "score", "progress"])
+    ev.add_argument("action", choices=["sample", "panel", "score", "progress"],
+                    help="panel: label the Eval set with the Codex labeler/skeptic/judge panel")
     ev.add_argument("--n", type=int, default=100)
     ev.add_argument("--fake", action="store_true")
-    ev.add_argument("--model", default=None, help="override the refinement model to compare")
+    ev.add_argument("--model", default=None,
+                    help="score: refinement model to compare; panel: Codex model")
     ev.set_defaults(func=cmd_eval)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])

@@ -100,7 +100,7 @@ _Avoid_: "signal" when you mean a Recommendation. A signal should only mean an i
 
 ## Eval set
 
-About 100 Candidates the author labeled blind (real vs. noise, Event type, Region, duplicate). Used to score LLM refinement on every prompt or model change (ADR-0019).
+About 100 Candidates labeled blind (real vs. noise, Event type, Region). Labeled by a Codex model panel of labeler, skeptic and judge, which the author can override by hand (ADR-0025). Used to score LLM refinement on every prompt or model change (ADR-0019).
 
 ## Track record
 
