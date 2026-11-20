@@ -421,7 +421,7 @@ def refine_candidates(
 ) -> dict[str, int]:
     conn.executescript(SPEND_SCHEMA)
     cap = cfg.backfill_llm_usd if purpose == "backfill" else cfg.daily_llm_usd
-    today = date.today().isoformat()
+    today = datetime.now(UTC).date().isoformat()  # same day as record_spend (UTC)
     tickers = [a.ticker for a in cfg.assets]
     system = system_prompt(tax, tickers, region)
     valid_types = {t.id for t in tax.event_types}
