@@ -274,3 +274,50 @@ def score(
     )
     conn.commit()
     return s
+
+
+def score_jev(conn: sqlite3.Connection, tax: Taxonomy, judge=None, fetch=None,
+              workers: int = 8, split: str = "test") -> dict:
+    """Jev pre-filter experiment on the test split: raw probabilities per item, then keep
+    precision/recall at several thresholds, and how much a pre-filter would forward."""
+    from tremor import jev
+
+    rows = conn.execute(
+        "SELECT i.candidate, l.is_real_event, l.event_type, l.region FROM eval_items i"
+        " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0 AND i.split = ?", (split,)
+    ).fetchall()
+    kwargs = {"fetch": fetch} if fetch else {}
+    cands = [json.loads(r[0]) for r in rows]
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        arts = list(pool.map(
+            lambda c: fetch_article(c["source_url"], c["event_date"], **kwargs), cands))
+    judgments = (judge or jev.ask_many)([(a.title, a.text) for a in arts], workers=workers)
+    items = []
+    for (_, is_real, label_type, label_region), cand, j in zip(rows, cands, judgments):
+        if isinstance(j, Exception):
+            print(f"  skipped {cand['source_url']}: {j}")
+            continue
+        items.append({"url": cand["source_url"], "probs": j.probs, "model": j.model,
+                      "tokens": j.input_tokens,
+                      "should_keep": bool(is_real) and label_region == cand["region"],
+                      "label_type": label_type})
+    out = {"n": len(items), "tokens": sum(i["tokens"] for i in items), "items": items,
+           "keep": {}, "prefilter": {}}
+    for yes in (0.5, 0.6, 0.7, 0.8):
+        kept = right = should = caught = 0
+        for it in items:
+            keep, kind = jev.decide(it["probs"], yes)
+            ok = it["should_keep"] and kind == it["label_type"]
+            kept += keep
+            right += keep and ok
+            should += it["should_keep"]
+            caught += keep and ok
+        out["keep"][yes] = {"precision": _ratio(right, kept), "recall": _ratio(caught, should),
+                            "kept": kept}
+    for low in (0.05, 0.1, 0.2, 0.3):
+        fwd = [it for it in items if jev.pass_on(it["probs"], low)]
+        should = [it for it in items if it["should_keep"]]
+        out["prefilter"][low] = {
+            "forwarded": _ratio(len(fwd), len(items)),
+            "keeps_forwarded": _ratio(sum(it["should_keep"] for it in fwd), len(should))}
+    return out
