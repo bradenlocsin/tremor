@@ -271,6 +271,21 @@ def cmd_eval(args: argparse.Namespace) -> int:
             evalset.save_label(conn, lab["source_url"], lab["is_real"], lab["event_type"],
                                lab["region"], duplicate=False, note=lab["note"],
                                labeled_by=f"panel:{model}")
+    elif args.action == "jev":
+        if not os.environ.get("TYPESAFE_API_KEY"):
+            print("Set TYPESAFE_API_KEY in .env first.")
+            return 2
+        res = evalset.score_jev(conn, default_taxonomy().first_slice(), split=args.split)
+        out = cfg.storage_path.parent / f"jev-eval-{args.split}.json"
+        out.write_text(json.dumps(res, indent=1))
+        print(f"Jev on {res['n']} test items, {res['tokens']:,} input tokens "
+              f"(~${res['tokens'] * 0.042 / 1e6:.4f}); raw answers in {out}")
+        for yes, m in res["keep"].items():
+            print(f"  keep at >= {yes}: precision {m['precision'] or 0:.0%}  "
+                  f"recall {m['recall'] or 0:.0%}  ({m['kept']} kept)")
+        for low, m in res["prefilter"].items():
+            print(f"  pre-filter at {low}: forwards {m['forwarded'] or 0:.0%} of articles, "
+                  f"keeps {m['keeps_forwarded'] or 0:.0%} of the real Events")
     elif args.action == "score":
         if args.fake:
             refiner = FakeRefiner()
@@ -384,7 +399,8 @@ def build_parser() -> argparse.ArgumentParser:
     pl.add_argument("--draws", type=int, default=1000)
     pl.set_defaults(func=cmd_placebo)
     ev = sub.add_parser("eval", help="the Eval set: sample items, then score a refiner")
-    ev.add_argument("action", choices=["sample", "panel", "examples", "score", "progress"],
+    ev.add_argument("action", choices=["sample", "panel", "examples", "score", "progress",
+                                       "jev"],
                     help="panel: label the Eval set with the Codex labeler/skeptic/judge panel")
     ev.add_argument("--n", type=int, default=100)
     ev.add_argument("--split", choices=["test", "teach"], default="test",
