@@ -32,6 +32,10 @@ def test_pages_render_with_real_data(monkeypatch):
     at = AppTest.from_file(APP, default_timeout=120).run()
     at.text_input[0].input("s3cret").run()
     assert not at.exception, at.exception
+    assert any("What history says" in m.value for m in at.markdown)  # Overview opens first
+    at.radio(key="ov_day").set_value(20).run()
+    assert not at.exception, at.exception
+    at.radio(key="page").set_value("Events").run()
     assert any("Event feed" in h.value for h in at.subheader)
     # switch Asset and Episode, then the Track record page
     at.radio(key="asset").set_value("BDRY").run()
@@ -44,10 +48,12 @@ def test_pages_render_with_real_data(monkeypatch):
     assert any("Track record" in h.value for h in at.subheader)
 
 
-def test_label_page_renders(monkeypatch):
+
+def test_label_page_is_behind_a_query_param(monkeypatch):
     monkeypatch.setenv("TREMOR_PASSCODE", "s3cret")
-    at = AppTest.from_file(APP, default_timeout=120).run()
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.query_params["label"] = "1"
+    at.run()
     at.text_input[0].input("s3cret").run()
-    at.radio(key="page").set_value("Label (Eval set)").run()
     assert not at.exception, at.exception
     assert any("Label the Eval set" in h.value for h in at.subheader)

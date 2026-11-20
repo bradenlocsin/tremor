@@ -507,7 +507,9 @@ def main():
     st.sidebar.caption(DISCLAIMER)
     st.sidebar.caption("Prices: Yahoo Finance via yfinance (non-commercial). Events: GDELT, "
                        "refined by AI models (Claude, Codex, Gemini).")
-    if page == "Overview":
+    if st.query_params.get("label"):  # hand overrides of panel labels (ADR-0025): ?label=1
+        label_page(cfg)
+    elif page == "Overview":
         overview_page(cfg, events, prices, bt)
     elif page == "Events":
         events_page(cfg, events, prices, saved, chokepoints)
