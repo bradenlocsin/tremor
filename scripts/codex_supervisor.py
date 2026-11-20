@@ -127,8 +127,19 @@ def main() -> int:
     log(f"{ENGINE} supervisor started (pid {os.getpid()}); {remaining()} Candidates to refine")
     stalls = 0
     weekly_alerted = False
+    queued = False
     while not STOP.exists():
         before = remaining()
+        if before == 0 and not queued and os.environ.get("TYPESAFE_API_KEY"):
+            # Main backfill done: queue Jev-flagged possible Episode starts once (ADR-0031)
+            q = subprocess.run(["uv", "run", "tremor", "jev", "queue"], capture_output=True,
+                               text=True, check=False)
+            log(f"jev queue: {(q.stdout or q.stderr).strip()[-200:]}")
+            queued = True
+            before = remaining()
+            if before:
+                notify(f"TREMOR: main backfill done. Jev flagged {before} more articles that "
+                       "could start new Episodes; refining those next.")
         if before == 0:
             notify(f"TREMOR: the history refinement is finished ({ENGINE} saw none left). "
                    "Every Candidate is refined; next step is `tremor recommend` and `tremor backtest`.")

@@ -96,6 +96,8 @@ class Candidate:
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # Candidates below the top-N rank that Jev flagged as possible Episode starts (ADR-0031)
+    conn.execute("CREATE TABLE IF NOT EXISTS jev_queue (source_url TEXT PRIMARY KEY)")
     cols = {r[1] for r in conn.execute("PRAGMA table_info(candidates)")}
     if "refined_tax" not in cols:  # taxonomy version a Candidate was last refined under
         conn.execute("ALTER TABLE candidates ADD COLUMN refined_tax INTEGER")

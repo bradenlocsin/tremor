@@ -108,3 +108,152 @@ def ask_many(items: list[tuple[str, str]], workers: int = 8,
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         return list(pool.map(one, items))
+
+
+# ---------------------------------------------------------------- pre-registered features (ADR-0031)
+
+FEATURES = {
+    "vessel_damaged": Noul(
+        instructions="Does `article` report that a ship was damaged, set on fire, sunk, or that "
+                     "its crew was hurt?",
+        criteria={"false": "No ship was harmed, for example the missiles or drones were "
+                           "intercepted or missed, or no ship was involved."}),
+    "energy_target": Noul(
+        instructions="Was the target of the incident in `article` an oil or gas tanker, or "
+                     "energy infrastructure such as a refinery, pipeline or oil terminal?"),
+    "fatalities": Noul(instructions="Does `article` report that people were killed?"),
+    "escalation": Noul(
+        instructions="Does `article` present the incident as a first or an expansion, such as a "
+                     "new kind of target, a new weapon, a new area, or a newly declared campaign?",
+        criteria={"false": "The incident is described as one more in an ongoing series of "
+                           "similar attacks."}),
+}
+YES, NO = 0.7, 0.3
+
+
+def flag(p: float) -> bool | None:
+    """Pre-registered reading: yes at >= 0.7, no at <= 0.3, otherwise left out."""
+    return True if p >= YES else False if p <= NO else None
+
+
+# ---------------------------------------------------------------- storage (resumable runs)
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS jev_answers (
+  source_url TEXT NOT NULL, kind TEXT NOT NULL, model TEXT NOT NULL, probs TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (source_url, kind)
+);
+"""
+
+
+def save(conn, url: str, kind: str, j: Judgment) -> None:
+    import json
+    from datetime import UTC, datetime
+
+    conn.execute("INSERT OR REPLACE INTO jev_answers VALUES (?, ?, ?, ?, ?, ?)",
+                 (url, kind, j.model, json.dumps(j.probs), j.input_tokens,
+                  datetime.now(UTC).isoformat(timespec="seconds")))
+
+
+def answers(conn, kind: str) -> dict[str, dict[str, float]]:
+    import json
+
+    conn.executescript(SCHEMA)
+    return {u: json.loads(p) for u, p in
+            conn.execute("SELECT source_url, probs FROM jev_answers WHERE kind = ?", (kind,))}
+
+
+def _ask(client, state: dict, questions: dict) -> Judgment:
+    r = client.system_one(state, questions, model=MODEL)
+    return Judgment({k: float(r.answers[k].noul) for k in questions}, r.model,
+                    int(getattr(r.usage, "input_tokens", 0) or 0))
+
+
+def screen_state(cand: dict) -> dict:
+    """Headline-only state for the full-pool screen: no article fetch."""
+    from tremor.refine import headline_from_url
+
+    actors = [a for a in (cand.get("actor1"), cand.get("actor2")) if a]
+    return {"article": {"headline": headline_from_url(cand["source_url"]),
+                        "actors_named": actors, "place_named": cand.get("place") or ""},
+            "region": REGION}
+
+
+SCREEN = {k: QUESTIONS[k] for k in ("incident", "ship_attacked", "land_strike", "blockade",
+                                    "in_region")}
+
+
+def run(conn, kind: str, todo: list[tuple[str, dict]], workers: int = 16, log=print,
+        client_factory: Callable[[], TypeSafeClient] = TypeSafeClient) -> dict:
+    """Ask `kind` questions ('screen' or 'features') for each (url, state); commits as it goes.
+    Stops on an auth or quota error rather than recording failures as answers."""
+    conn.executescript(SCHEMA)
+    questions = SCREEN if kind == "screen" else FEATURES
+    client = client_factory()
+    stats = {"done": 0, "errors": 0, "tokens": 0}
+
+    def one(item):
+        url, state = item
+        try:
+            return url, _ask(client, state, questions)
+        except Exception as e:  # noqa: BLE001 - recorded as an error, never as an answer
+            return url, e
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i, (url, j) in enumerate(pool.map(one, todo), 1):
+            if isinstance(j, Exception):
+                stats["errors"] += 1
+                if stats["errors"] <= 3:
+                    log(f"  {url}: {j}")
+                if stats["errors"] >= 50 and stats["done"] == 0:
+                    raise RuntimeError(f"Jev keeps failing: {j}")
+                continue
+            save(conn, url, kind, j)
+            stats["done"] += 1
+            stats["tokens"] += j.input_tokens
+            if i % 500 == 0:
+                conn.commit()
+                log(f"  {i}/{len(todo)}  ({stats['tokens'] * 0.042 / 1e6:.3f} USD so far)")
+    conn.commit()
+    return stats
+
+
+def episode_start_candidates(conn, calendar, gap: int, low: float = 0.2) -> list[str]:
+    """Screened, not-yet-refined Candidate URLs that would become an Episode start if real.
+
+    A Candidate qualifies when Jev's screen passes it at `low` and no Event of its likely type
+    falls in the `gap` trading days before its date: it would then open a new Episode or move an
+    existing Episode's day 0 earlier. Refining anything else only adds Events inside existing
+    Episodes, which changes no Comparable (ADR-0031)."""
+    import bisect
+
+    import pandas as pd
+
+    screened = answers(conn, "screen")
+    days = list(pd.DatetimeIndex(calendar).normalize())
+    pos = {d.date(): i for i, d in enumerate(days)}
+
+    def tday(d) -> int:
+        return bisect.bisect_left(days, pd.Timestamp(d))
+
+    by_type: dict[str, list[int]] = {}
+    for t, d in conn.execute("SELECT event_type, occurred_on FROM events WHERE region = 'red_sea'"):
+        by_type.setdefault(t, []).append(tday(d))
+    for v in by_type.values():
+        v.sort()
+    rows = conn.execute(
+        "SELECT source_url, MIN(event_date) FROM candidates WHERE region = 'red_sea' AND"
+        " status = 'new' AND source_url IN (SELECT source_url FROM jev_answers WHERE kind ="
+        " 'screen') GROUP BY source_url").fetchall()
+    out = []
+    for url, d in rows:
+        p = screened[url]
+        if not pass_on(p, low):
+            continue
+        kind = TYPE_OF[max(TYPE_OF, key=lambda k: p[k])]
+        t = pos.get(pd.Timestamp(d).date(), tday(d))
+        prior = by_type.get(kind, [])
+        i = bisect.bisect_left(prior, t)  # Events strictly before day t
+        if i == 0 or t - prior[i - 1] > gap:
+            out.append(url)
+    return out

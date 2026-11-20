@@ -106,6 +106,10 @@ About 100 Candidates labeled blind (real vs. noise, Event type, Region). Labeled
 
 A blind re-check of a random sample of the history refinement by a second model family (Gemini, via Antigravity CLI). It reports how often the two models agree on keep vs. reject, with Cohen's kappa. Agreement is not accuracy, but low agreement is a warning (ADR-0029).
 
+## Shock
+
+An Event used as an independent case in the pre-registered feature tests: the first Event of its series at least 5 trading days after the previous one, so +5-day windows don't overlap (ADR-0031).
+
 ## Track record
 
 TREMOR's scored history of Recommendations: back-tested over historical Events without look-ahead, plus live Recommendations once their horizon passes (ADR-0018).

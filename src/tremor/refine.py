@@ -390,7 +390,8 @@ def pick_candidates(
             PARTITION BY event_date, candidate_types ORDER BY coverage DESC) AS rk
           FROM urls
         )
-        SELECT * FROM ranked WHERE rk <= ? AND todo = 1
+        SELECT * FROM ranked
+        WHERE (rk <= ? OR source_url IN (SELECT source_url FROM jev_queue)) AND todo = 1
         ORDER BY event_date {"ASC" if oldest_first else "DESC"}, coverage DESC
         """,
         (taxonomy_version, region, since, since, per_day_per_type),

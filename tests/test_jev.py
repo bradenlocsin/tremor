@@ -38,3 +38,31 @@ def test_score_jev_counts_and_reports_errors(tmp_path):
 def test_background_mentions_are_not_kept():
     p = probs(incident=0.95, main_news=0.1, in_region=0.9, blockade=0.95)
     assert not jev.decide(p)[0] and not jev.pass_on(p)
+
+
+def test_episode_start_candidates_only_queues_possible_starts(tmp_path):
+    import json
+
+    import pandas as pd
+
+    import sqlite3
+
+    conn = sqlite3.connect(tmp_path / "q.sqlite")
+    conn.executescript(jev.SCHEMA + """
+        CREATE TABLE events (event_type TEXT, region TEXT, occurred_on TEXT);
+        CREATE TABLE candidates (source_url TEXT, region TEXT, status TEXT, event_date TEXT);
+        INSERT INTO events VALUES ('shipping_attack', 'red_sea', '2024-01-15');""")
+    cal = pd.bdate_range("2024-01-01", "2024-03-29")
+    def screen(p):  # real screen answers have no main_news (headline only)
+        return {k: v for k, v in p.items() if k in jev.SCREEN}
+
+    yes = screen(probs(incident=0.9, in_region=0.9, ship_attacked=0.9))
+    cands = {"two-days-after": "2024-01-17", "a-month-after": "2024-02-20",
+             "day-before": "2024-01-12", "not-an-event": "2024-03-01"}
+    for url, d in cands.items():
+        conn.execute("INSERT INTO candidates VALUES (?, 'red_sea', 'new', ?)", (url, d))
+        p = yes if url != "not-an-event" else screen(probs())
+        conn.execute("INSERT INTO jev_answers VALUES (?, 'screen', 'm', ?, 1, 'now')",
+                     (url, json.dumps(p)))
+    got = set(jev.episode_start_candidates(conn, cal, gap=10))
+    assert got == {"a-month-after", "day-before"}  # new Episode; earlier day 0
