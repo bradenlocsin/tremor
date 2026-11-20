@@ -39,6 +39,23 @@ Combined offline with Haiku's saved test-set answers:
 
 The test set holds only 28 real Events, so each figure is about ±10 points.
 
+## Calibration check (2026-11-20, from the saved answers, no new calls)
+
+Keep score = the minimum of `incident`, `main_news`, `in_region` and the top type, against the hand labels, teach and test together (135 articles, 39 real Events):
+
+| Jev's score | Articles | Average score | Actually an Event |
+|---|---|---|---|
+| 0.0–0.1 | 54 | 0.05 | 4% |
+| 0.1–0.3 | 29 | 0.17 | 7% |
+| 0.3–0.5 | 12 | 0.38 | 25% |
+| 0.5–0.7 | 10 | 0.60 | 60% |
+| 0.7–0.9 | 12 | 0.82 | 92% |
+| 0.9–1.0 | 18 | 0.94 | 83% |
+
+Brier score 0.093, against 0.205 for always guessing the base rate. The scores track reality roughly, slightly conservative below 0.5. The bins hold 10–54 articles, so each rate is rough.
+
+Type questions, on the real Events only: `ship_attacked` ≥ 0.7 was right 24 of 26 times, and ≤ 0.3 never missed a shipping attack. `land_strike` (6 of 11) and `blockade` (2 of 5) often say yes when the article's main type is something else, because one article often reports several kinds of incident. The ship question is reliable on its own; the other two need the top-type rule.
+
 ## Proposal (not yet adopted)
 
 1. **Recall rescue in the hourly job:** keep an Event when Haiku keeps it, or when Jev scores ≥0.6. A Jev-only Event would still need Haiku to write its title, summary and date, so Jev decides *whether* to refine and Haiku does the writing. That is the "or" rule, at a fraction of a cent per hour.
