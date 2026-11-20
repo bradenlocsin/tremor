@@ -459,6 +459,55 @@ def cmd_shocks(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_alpha(args: argparse.Namespace) -> int:
+    """Profit research track (ADR-0032): fetch prices, search rules on discovery data."""
+    import json
+
+    from tremor import alpha, jev
+    from tremor.events import load_events
+    from tremor.refine import pick_candidates
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    if args.action == "fetch":
+        print(alpha.fetch_prices(conn))
+        return 0
+    left = len(pick_candidates(conn, "red_sea", 3,
+                               taxonomy_version=default_taxonomy().first_slice().version))
+    if left and not args.anyway:
+        print(f"The backfill isn't complete ({left:,} Candidates left). Every rule tried is "
+              "logged and raises the bar for the rest, so wait, or pass --anyway.")
+        return 2
+    opens, closes = alpha.load_ohlc(conn)
+    events = [e for e in load_events(conn, region="red_sea")]
+    sets = alpha.signal_sets(conn, events, closes.index, cfg.event_study.episode_gap_trading_days,
+                             jev.answers(conn, "features"))
+    results = []
+    for name, dates in sets.items():
+        for asset in alpha.RESEARCH_TICKERS:
+            if asset == "SPY":
+                continue
+            for hold in (1, 2, 5, 10, 20):
+                for direction in (1, -1):
+                    for hedge in (False, True):
+                        rule = alpha.Rule(name, asset, hold, direction, hedge)
+                        results.append(alpha.evaluate(conn, dates, opens, closes, rule))
+    conn.commit()
+    promoted = alpha.promote(conn, results)
+    print(f"{len(results):,} rules tried on discovery data ({len(alpha.trial_srs(conn)):,} "
+          f"logged in total); {len(promoted)} clear the bar (ADR-0032).")
+    for r in promoted[:25]:
+        print(f"  {r['rule']:55s} n={r['n']:3d} mean={r['mean']:+.2%} hit={r['hit']:.0%} "
+              f"t={r['t']:.1f} DSR={r['dsr']:.2f}")
+    out = {"tried": len(results), "promoted": promoted,
+           "top_by_t": sorted([r for r in results if r["t"] is not None and r["n"] >= 20],
+                              key=lambda r: -r["t"])[:40]}
+    (cfg.storage_path.parent / "alpha-discovery.json").write_text(json.dumps(out, indent=1))
+    return 0
+
+
 def cmd_jobs(args: argparse.Namespace) -> int:
     from tremor import jobs
 
@@ -552,6 +601,10 @@ def build_parser() -> argparse.ArgumentParser:
     sh = sub.add_parser("shocks", help="the pre-registered shock-feature tests (ADR-0031)")
     sh.add_argument("--final", action="store_true", help="run them (once, on complete history)")
     sh.set_defaults(func=cmd_shocks)
+    al = sub.add_parser("alpha", help="profit research: trade rules, locked holdout (ADR-0032)")
+    al.add_argument("action", choices=["fetch", "discover"])
+    al.add_argument("--anyway", action="store_true", help="search before the backfill is done")
+    al.set_defaults(func=cmd_alpha)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])
     jb.set_defaults(func=cmd_jobs)
