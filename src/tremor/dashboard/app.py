@@ -13,7 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from tremor.analysis import analyze_event, episodes_for
+from tremor.analysis import analyze_event, analyze_group, episodes_for
 from tremor.backtest import summarize, Call
 from tremor.config import load_config
 from tremor.event_study import daily_returns, event_car
@@ -148,6 +148,148 @@ def car_chart(result, own_car: pd.Series | None, asset: str) -> go.Figure:
     return fig
 
 
+# ---------------------------------------------------------------- overview
+
+# Diverging pair for "moved up" vs "moved down" relative to the market, neutral gray midpoint.
+UP, DOWN, NEUTRAL, MUTED = "#2a78d6", "#eb6834", "#ecebe8", "#8a8985"
+HORIZONS = (5, 20)
+
+
+def short_name(asset) -> str:
+    """'commodity: oil' -> 'Oil', 'sector: shipping (freight proxy)' -> 'Shipping'."""
+    label = asset.category.split(": ", 1)[-1].split(" (")[0]
+    return label[:1].upper() + label[1:]
+
+
+@st.cache_data(ttl=3600, show_spinner="Running the event studies…")
+def findings():
+    """Event study for every first-slice Event type in the Red Sea, per Asset."""
+    cfg, events, prices, *_ = load()
+    tax = default_taxonomy().first_slice()
+    return {t.id: analyze_group(t.id, "red_sea", events, prices, cfg) for t in tax.event_types}
+
+
+def findings_chart(res: dict, cfg, day: int) -> go.Figure:
+    tax = default_taxonomy()
+    types = list(res)
+    assets = cfg.assets
+    z, zsig, text, hover = [], [], [], []
+    for t in types:
+        zr, sr, tr, hr = [], [], [], []
+        for a in assets:
+            r = res[t][a.ticker]
+            h = r.headlines.get(day)
+            car = h.mean_car if h else float("nan")
+            sig = bool(h and h.significant)
+            zr.append(car)
+            sr.append(car if sig else None)
+            tr.append("–" if car != car else f"<b>{car * 100:+.1f}%</b>" + (" ✓" if sig else "")
+                      + f"<br><span style='font-size:11px'>{r.n} cases</span>")
+            verdict = ("reliable (passes the multiple-testing check)" if sig else
+                       "too few past cases" if r.insufficient else "not distinguishable from noise")
+            hr.append(f"{tax.event_type(t).name} → {short_name(a)} ({a.ticker})<br>"
+                      f"average move vs market after {day} trading days: "
+                      f"{'–' if car != car else pct(car)}<br>{r.n} past cases · {verdict}")
+        z.append(zr); zsig.append(sr); text.append(tr); hover.append(hr)
+    rows = [tax.event_type(t).name for t in types]
+    cols = [f"<b>{short_name(a)}</b><br>{a.ticker}" for a in assets]
+    lim = max([abs(v) for row in z for v in row if v == v] + [0.01])
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(z=[[0 if v == v else None for v in row] for row in z], x=cols,
+                             y=rows, colorscale=[[0, NEUTRAL], [1, NEUTRAL]], showscale=False,
+                             text=text, texttemplate="%{text}",
+                             textfont=dict(color=MUTED, size=15),
+                             hovertext=hover, hoverinfo="text", xgap=2, ygap=2))
+    fig.add_trace(go.Heatmap(z=zsig, x=cols, y=rows, zmin=-lim, zmax=lim, zmid=0,
+                             colorscale=[[0, DOWN], [0.5, NEUTRAL], [1, UP]], showscale=False,
+                             text=text, texttemplate="%{text}",
+                             textfont=dict(color="#1c1b19", size=15),
+                             hovertext=hover, hoverinfo="text", xgap=2, ygap=2))
+    fig.update_layout(height=100 + 80 * len(rows), margin=dict(l=10, r=10, t=10, b=10),
+                      yaxis=dict(autorange="reversed", tickfont=dict(size=14)),
+                      xaxis=dict(side="top", tickfont=dict(size=13)))
+    return fig
+
+
+def overview_page(cfg, events, prices, bt):
+    tax = default_taxonomy()
+    st.title("TREMOR")
+    st.markdown("##### When something happens in the Red Sea, how do markets react, "
+                "and can that reaction be predicted?")
+    st.write(
+        "TREMOR reads the news, keeps only real geopolitical events, and measures how oil, gold, "
+        "defense stocks, shipping and the dollar moved after every similar event in the past. It "
+        "only makes a call when the history is strong enough to pass statistical checks, and it "
+        "scores every call honestly."
+    )
+
+    first = default_taxonomy().first_slice()
+    ids = {t.id for t in first.event_types}
+    red = [e for e in events if e.region == "red_sea" and e.event_type in ids]
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Events tracked", f"{len(red):,}")
+    if red:
+        k2.metric("History from", str(min(e.occurred_on for e in red).year))
+        k3.metric("Latest Event", max(e.occurred_on for e in red).strftime("%b %-d, %Y"))
+    if not bt.empty:
+        calls = [Call(**{k: r[k] for k in Call.__dataclass_fields__}) for _, r in bt.iterrows()]
+        k4.metric("Back-tested calls right", f"{summarize(calls).hit_rate.iloc[0]:.0%}",
+                  help=f"Out of {len(calls)} calls made without hindsight.")
+    else:
+        k4.metric("Back-tested calls", "pending", help="Runs once the history is fully loaded.")
+
+    st.markdown("#### What history says")
+    day = st.radio("Horizon", HORIZONS, horizontal=True, key="ov_day",
+                   format_func=lambda d: f"{d} trading days later")
+    res = findings()
+    st.plotly_chart(findings_chart(res, cfg, day), width="stretch",
+                    config={"displayModeBar": False})
+    st.caption(
+        "Each cell is the average move of the Asset relative to the S&P 500 after past Events of "
+        "that type (cases = how many past Events it averages). Colored cells with ✓ are reliable: they pass a "
+        "significance test corrected for testing many combinations at once. Gray cells are not "
+        "reliable yet, because there are too few cases or the effect is too small to tell apart "
+        "from normal market noise."
+    )
+    reliable = [(t, a, res[t][a.ticker]) for t in res for a in cfg.assets
+                if (h := res[t][a.ticker].headlines.get(day)) and h.significant]
+    if reliable:
+        for t, a, r in reliable:
+            h = r.headlines[day]
+            word = "rose" if h.mean_car > 0 else "fell"
+            st.markdown(f"- After **{tax.event_type(t).name.lower()}s**, **{short_name(a)}** "
+                        f"({a.ticker}) {word} **{abs(h.mean_car) * 100:.1f}%** more than the "
+                        f"market over {day} trading days on average ({r.n} past cases).")
+    else:
+        st.info("No reaction is statistically reliable at this horizon yet. That is an honest "
+                "result, not a bug: the full history is still loading, and many effects that "
+                "look large are within normal market noise.")
+
+    st.markdown("#### Latest Events")
+    eps = sorted(episodes_for(red, prices, cfg), key=lambda ep: ep.end, reverse=True)[:6]
+    for ep in eps:
+        last = max(ep.events, key=lambda e: e.occurred_on)
+        more = (f" · part of a run of {ep.size} related Events since {ep.start:%b %-d, %Y}"
+                if ep.size > 1 else "")
+        st.markdown(f"**{last.occurred_on:%b %-d, %Y}** · "
+                    f"{tax.event_type(ep.event_type).name}{more}  \n{last.title}")
+    st.caption("Open **Events** in the sidebar for the full analysis of any Event.")
+
+    with st.expander("How it works"):
+        st.markdown(
+            "1. **Detect.** Every hour TREMOR pulls Red Sea news from GDELT, a global news "
+            "database. AI models read each article and keep it only if it reports a real event "
+            "of a tracked type (shipping attack, military strike, chokepoint disruption). They "
+            "are checked against a labeled test set and against each other.\n"
+            "2. **Measure.** For each Event it runs an *event study*: how each Asset moved "
+            "relative to the S&P 500 in the days after every comparable past Event.\n"
+            "3. **Call.** A Recommendation is made only when enough past cases agree and the "
+            "result survives a multiple-testing correction and a placebo check against random "
+            "dates. Every call is back-tested without hindsight and scored in the **Track "
+            "record**."
+        )
+
+
 # ---------------------------------------------------------------- pages
 
 
@@ -209,12 +351,16 @@ def events_page(cfg, events, prices, saved, chokepoints):
         rows = []
         for a in cfg.assets:
             r = analysis.results[a.ticker]
-            row = {"Asset": a.ticker, "N": r.n}
+            row = {"Asset": f"{short_name(a)} ({a.ticker})", "Past cases": r.n}
             for d, h in r.headlines.items():
-                row[f"CAR +{d}d"] = pct(h.mean_car)
-                row[f"p +{d}d"] = f"{h.p_value:.2f}" if h.p_value == h.p_value else "–"
+                row[f"Move vs market, +{d}d"] = pct(h.mean_car)
+                row[f"p-value +{d}d"] = f"{h.p_value:.2f}" if h.p_value == h.p_value else "–"
             rows.append(row)
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        st.caption("Move vs market: the Asset's average return beyond what the S&P 500 explains "
+                   "(cumulative abnormal return). A p-value below 0.05 means the move would be "
+                   "unlikely by chance alone; Recommendations also require the stricter "
+                   "multiple-testing check.")
 
         st.markdown("#### Recommendation")
         if not cfg.recommendations_enabled:
@@ -356,17 +502,17 @@ def main():
     cfg, events, prices, bt, live, saved, chokepoints = load()
     st.sidebar.title("TREMOR")
     st.sidebar.caption("Tracking Risk Events & Market Outcome Reactions")
-    page = st.sidebar.radio("Page", ["Events", "Track record", "Label (Eval set)"], key="page")
+    page = st.sidebar.radio("Page", ["Overview", "Events", "Track record"], key="page")
     st.sidebar.divider()
     st.sidebar.caption(DISCLAIMER)
     st.sidebar.caption("Prices: Yahoo Finance via yfinance (non-commercial). Events: GDELT, "
-                       "refined by Claude.")
-    if page == "Events":
+                       "refined by AI models (Claude, Codex, Gemini).")
+    if page == "Overview":
+        overview_page(cfg, events, prices, bt)
+    elif page == "Events":
         events_page(cfg, events, prices, saved, chokepoints)
     elif page == "Track record":
         track_record_page(bt, live)
-    else:
-        label_page(cfg)
 
 
 main()
