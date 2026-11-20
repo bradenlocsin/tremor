@@ -1,6 +1,6 @@
 # Fly.io config for TREMOR (ADR-0016). See docs/deploy.md.
 # The app name must be globally unique on Fly; change it if "tremor" is taken.
-app = "tremor"
+app = "tremor-risk"
 primary_region = "iad"
 
 [build]
