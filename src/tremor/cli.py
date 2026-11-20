@@ -336,6 +336,87 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_jev(args: argparse.Namespace) -> int:
+    """Jev jobs (ADR-0031): screen the whole Candidate pool, or answer feature questions."""
+    import os
+
+    from tremor import jev
+    from tremor.refine import fetch_article
+    from tremor.storage import connect
+
+    if not os.environ.get("TYPESAFE_API_KEY"):
+        print("Set TYPESAFE_API_KEY in .env first.")
+        return 2
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    conn.executescript(jev.SCHEMA)
+    if args.action in ("screen", "validate"):
+        done = set(jev.answers(conn, "screen"))
+        if args.action == "validate":
+            rows = conn.execute(
+                "SELECT source_url, MAX(actor1), MAX(actor2), MAX(place) FROM candidates"
+                " WHERE source_url IN (SELECT source_url FROM eval_items) GROUP BY source_url"
+            ).fetchall()
+        else:  # ranks 4..max-rank per day and type: just below what the backfill refines
+            from tremor.refine import pick_candidates
+            from tremor.taxonomy import default_taxonomy
+
+            ver = default_taxonomy().first_slice().version
+            rows = [(c["source_url"], c["actor1"], c["actor2"], c["place"])
+                    for c in pick_candidates(conn, "red_sea", args.max_rank,
+                                             taxonomy_version=ver)
+                    if c["rk"] > 3]
+        todo = [(u, jev.screen_state({"source_url": u, "actor1": a1, "actor2": a2, "place": pl}))
+                for u, a1, a2, pl in rows if u not in done][: args.limit]
+        print(f"screening {len(todo):,} Candidate URLs by headline…")
+        print(jev.run(conn, "screen", todo, workers=args.workers))
+        if args.action == "validate":
+            ans = jev.answers(conn, "screen")
+            for split in ("teach", "test"):
+                labels = conn.execute(
+                    "SELECT i.source_url, l.is_real_event, l.region, json_extract(i.candidate,"
+                    " '$.region') FROM eval_items i JOIN eval_labels l USING (source_url)"
+                    " WHERE l.unsure = 0 AND i.split = ?", (split,)).fetchall()
+                keep = [u for u, real, reg, cr in labels if real and reg == cr and u in ans]
+                n = sum(u in ans for u, *_ in labels)
+                for low in (0.05, 0.1, 0.2, 0.3, 0.5):
+                    fwd = {u for u, *_ in labels if u in ans and jev.pass_on(ans[u], low)}
+                    print(f"  {split} @ {low}: passes {len(fwd) / n:.0%} of {n}, "
+                          f"keeps {sum(u in fwd for u in keep) / max(len(keep), 1):.0%} "
+                          f"of {len(keep)} real Events")
+    elif args.action == "queue":
+        from tremor import gdelt
+        from tremor.event_study import daily_returns
+        from tremor.prices import load_prices
+
+        gdelt.ensure_schema(conn)
+        cal = daily_returns(load_prices(conn, cfg.tickers), cfg.benchmark).index
+        urls = jev.episode_start_candidates(conn, cal, cfg.event_study.episode_gap_trading_days,
+                                            low=args.low)
+        if args.dry_run:
+            print(f"{len(urls):,} Candidates would join the refinement queue (dry run)")
+            return 0
+        conn.execute("DELETE FROM jev_queue")
+        conn.executemany("INSERT OR IGNORE INTO jev_queue VALUES (?)", [(u,) for u in urls])
+        conn.commit()
+        print(f"queued {len(urls):,} possible Episode starts for refinement")
+    else:  # features
+        done = set(jev.answers(conn, "features"))
+        evs = [r for r in conn.execute(
+            "SELECT source_url, occurred_on FROM events WHERE source_url != '' AND region ="
+            " 'red_sea'").fetchall() if r[0] not in done][: args.limit]
+        print(f"fetching {len(evs):,} Event articles…")
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            arts = list(pool.map(lambda r: fetch_article(r[0], r[1]), evs))
+        todo = [(u, {"article": {"headline": a.title, "text": (a.text or "")[:jev.MAX_CHARS]}})
+                for (u, _), a in zip(evs, arts)]
+        print(f"asking feature questions for {len(todo):,} Events…")
+        print(jev.run(conn, "features", todo, workers=args.workers))
+    return 0
+
+
 def cmd_jobs(args: argparse.Namespace) -> int:
     from tremor import jobs
 
@@ -418,6 +499,14 @@ def build_parser() -> argparse.ArgumentParser:
     au.add_argument("--model", default=None, help="agy model id")
     au.add_argument("--workers", type=int, default=4)
     au.set_defaults(func=cmd_audit)
+    jv = sub.add_parser("jev", help="Jev jobs: full-pool headline screen, Event features")
+    jv.add_argument("action", choices=["validate", "screen", "features", "queue"])
+    jv.add_argument("--limit", type=int, default=None)
+    jv.add_argument("--workers", type=int, default=16)
+    jv.add_argument("--max-rank", type=int, default=10, help="screen: deepest rank per day/type")
+    jv.add_argument("--low", type=float, default=0.2, help="queue: screen pass threshold")
+    jv.add_argument("--dry-run", action="store_true", help="queue: count only")
+    jv.set_defaults(func=cmd_jev)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])
     jb.set_defaults(func=cmd_jobs)
