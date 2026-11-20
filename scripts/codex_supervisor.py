@@ -141,8 +141,13 @@ def main() -> int:
                 notify(f"TREMOR: main backfill done. Jev flagged {before} more articles that "
                        "could start new Episodes; refining those next.")
         if before == 0:
+            if os.environ.get("TYPESAFE_API_KEY"):  # features for Events added since (ADR-0031)
+                f = subprocess.run(["uv", "run", "tremor", "jev", "features"],
+                                   capture_output=True, text=True, check=False)
+                log(f"jev features: {(f.stdout or f.stderr).strip()[-200:]}")
             notify(f"TREMOR: the history refinement is finished ({ENGINE} saw none left). "
-                   "Every Candidate is refined; next step is `tremor recommend` and `tremor backtest`.")
+                   "Every Candidate is refined and has Jev features; next: the final audit, then "
+                   "`tremor shocks --final`, `tremor recommend` and `tremor backtest`.")
             return 0
         log(f"starting refine ({before} left)")
         with LOG.open("a") as f:

@@ -417,6 +417,48 @@ def cmd_jev(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shocks(args: argparse.Namespace) -> int:
+    """The pre-registered feature tests (ADR-0031): run once, on the complete history."""
+    from datetime import UTC, datetime
+
+    from tremor import jev, shocks
+    from tremor.events import load_events
+    from tremor.prices import load_prices
+    from tremor.refine import pick_candidates
+    from tremor.storage import connect
+    from tremor.taxonomy import default_taxonomy
+
+    cfg = load_config()
+    conn = connect(cfg.storage_path)
+    left = len(pick_candidates(conn, "red_sea", 3,
+                               taxonomy_version=default_taxonomy().first_slice().version))
+    if not args.final or left:
+        print("These are the pre-registered tests (ADR-0031): they run once, on the complete "
+              "history, and are reported whatever they show.")
+        if left:
+            print(f"The backfill isn't complete: {left:,} Candidates still to refine.")
+        if not args.final:
+            print("Pass --final to run them.")
+        return 2
+    res = shocks.run(load_events(conn), jev.answers(conn, "features"),
+                     load_prices(conn, cfg.tickers), cfg)
+    conn.execute("""CREATE TABLE IF NOT EXISTS shock_tests (
+        run_at TEXT, hypothesis TEXT, feature TEXT, asset TEXT, day INTEGER, n_yes INTEGER,
+        n_no INTEGER, mean_yes REAL, mean_no REAL, p_value REAL, q_value REAL,
+        significant INTEGER, note TEXT)""")
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    conn.executemany("INSERT INTO shock_tests VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                     [(now, r.hypothesis, r.feature, r.asset, r.day, r.n_yes, r.n_no,
+                       r.mean_yes, r.mean_no, r.p_value, r.q_value, int(r.significant), r.note)
+                      for r in res])
+    conn.commit()
+    for r in res:
+        print(f"{r.hypothesis} {r.feature:15s} {r.asset:5s} +{r.day:<2d} yes {r.mean_yes:+.2%} "
+              f"(n={r.n_yes})  no {r.mean_no:+.2%} (n={r.n_no})  p={r.p_value:.3f} "
+              f"q={r.q_value:.3f} {'SIGNIFICANT' if r.significant else ''} {r.note}")
+    return 0
+
+
 def cmd_jobs(args: argparse.Namespace) -> int:
     from tremor import jobs
 
@@ -507,6 +549,9 @@ def build_parser() -> argparse.ArgumentParser:
     jv.add_argument("--low", type=float, default=0.2, help="queue: screen pass threshold")
     jv.add_argument("--dry-run", action="store_true", help="queue: count only")
     jv.set_defaults(func=cmd_jev)
+    sh = sub.add_parser("shocks", help="the pre-registered shock-feature tests (ADR-0031)")
+    sh.add_argument("--final", action="store_true", help="run them (once, on complete history)")
+    sh.set_defaults(func=cmd_shocks)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])
     jb.set_defaults(func=cmd_jobs)
