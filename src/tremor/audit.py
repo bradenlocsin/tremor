@@ -62,9 +62,11 @@ def kappa(a: list[bool], b: list[bool]) -> float:
 def sample(conn: sqlite3.Connection, tax: Taxonomy, n: int, seed: int,
            queued_only: bool = False) -> list[dict]:
     """Half kept, half rejected (or as many as exist), from Candidates refined under `tax`.
-    `queued_only`: only Candidates that came in through the Jev queue (ADR-0031)."""
+    `queued_only`: only Candidates that came in through the Jev screen (ADR-0031): screened
+    URLs that were refined. Uses jev_answers, not jev_queue, which is rebuilt on each pass."""
     conn.row_factory = sqlite3.Row
-    extra = " AND source_url IN (SELECT source_url FROM jev_queue)" if queued_only else ""
+    extra = (" AND source_url IN (SELECT source_url FROM jev_answers WHERE kind = 'screen')"
+             " AND source_url NOT IN (SELECT source_url FROM eval_items)") if queued_only else ""
     rows = [dict(r) for r in conn.execute(
         f"""SELECT source_url, MIN(event_date) AS event_date, candidate_types, region,
                   MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
