@@ -497,12 +497,52 @@ def label_page(cfg):
                 st.rerun()
 
 
+def paper_page(cfg):
+    from tremor import paper
+
+    st.subheader("Paper trading")
+    st.caption(
+        "Pretend money, real prices. Only rules that passed the locked holdout year (ADR-0032) "
+        "trade here, and only on news first seen after the rule was switched on. The algorithm "
+        "places every order; nobody picks trades by hand. Orders are written before the trade "
+        "and can't be edited or deleted: each one carries a hash of the one before, so a "
+        "missing or changed order would show. Entry is the next trading day's open, exit a "
+        "close; costs are charged both ways. $1,000 per trade from a $10,000 account. "
+        + DISCLAIMER)
+    conn = connect(cfg.storage_path)
+    active = paper.rules(conn)
+    if not active:
+        st.info("No rules are trading yet. Rules start here only after they pass the locked "
+                "holdout test.")
+        return
+    st.markdown("#### Rules trading")
+    st.dataframe(pd.DataFrame([{"rule": r, "asset": s.asset, "hold (days)": s.hold,
+                                "kind": s.kind, "since": a.isoformat()} for r, s, a in active]),
+                 hide_index=True, width="stretch")
+    led = paper.ledger(conn)
+    closed = led[led["status"] == "closed"] if not led.empty else led
+    pnl = float(closed["pnl"].sum()) if not closed.empty else 0.0
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Account", f"${paper.START_CASH + pnl:,.0f}", f"{pnl:+,.0f}")
+    c2.metric("Closed trades", len(closed))
+    c3.metric("Win rate", f"{(closed['ret'] > 0).mean():.0%}" if len(closed) else "–")
+    c4.metric("Order log", "intact" if paper.chain_ok(conn) else "BROKEN")
+    if led.empty:
+        st.caption("No orders yet: waiting for a new signal.")
+        return
+    show = led[["created_at", "rule_id", "asset", "direction", "status", "entry_date", "entry",
+                "exit_date", "exit", "ret", "pnl"]].copy()
+    show["direction"] = show["direction"].map({1: "long", -1: "short"})
+    show["ret"] = show["ret"].map(lambda x: pct(x) if x == x and x is not None else "–")
+    st.dataframe(show.iloc[::-1], hide_index=True, width="stretch")
+
+
 def main():
     gate()
     cfg, events, prices, bt, live, saved, chokepoints = load()
     st.sidebar.title("TREMOR")
     st.sidebar.caption("Tracking Risk Events & Market Outcome Reactions")
-    page = st.sidebar.radio("Page", ["Overview", "Events", "Track record"], key="page")
+    page = st.sidebar.radio("Page", ["Overview", "Events", "Track record", "Paper trading"], key="page")
     st.sidebar.divider()
     st.sidebar.caption(DISCLAIMER)
     st.sidebar.caption("Prices: Yahoo Finance via yfinance (non-commercial). Events: GDELT, "
@@ -515,6 +555,8 @@ def main():
         events_page(cfg, events, prices, saved, chokepoints)
     elif page == "Track record":
         track_record_page(bt, live)
+    elif page == "Paper trading":
+        paper_page(cfg)
 
 
 main()

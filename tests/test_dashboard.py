@@ -46,6 +46,9 @@ def test_pages_render_with_real_data(monkeypatch):
     at.radio(key="page").set_value("Track record").run()
     assert not at.exception, at.exception
     assert any("Track record" in h.value for h in at.subheader)
+    at.radio(key="page").set_value("Paper trading").run()
+    assert not at.exception, at.exception
+    assert any("Paper trading" in h.value for h in at.subheader)
 
 
 
