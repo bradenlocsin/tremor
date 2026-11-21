@@ -176,6 +176,23 @@ The hourly news pull and refinement (on Claude Haiku) run there on their own. A 
 - **A bug fixed on the way:** the first audit run crashed while saving, because the results table had gained two columns. Fixed, with a test.
 - **Cost of the overnight work:** about $0.48 on the Claude API (audit $0.06 plus about $0.06 for the crashed run, judge $0.28, eval re-scoring $0.08), and Jev about $0.03.
 
+## Part 9: The results (Nov 21)
+
+**The 11 pre-registered shock tests: nothing significant.** Run once on the complete history, as promised. Jev's severity answers did not separate bigger market reactions from smaller ones:
+- **H1:** Shipping attacks that damaged a ship moved oil and freight no differently from those that didn't. Oil +5 days: −0.17% vs +0.18%; p = 0.63.
+- **H2:** Attacks on energy targets didn't move oil more. −0.42% vs +0.04%; p = 0.63.
+- **H3:** Escalations didn't move any of the five assets more than routine events. The closest was defense (ITA): +1.96% vs +1.69%; p = 0.11.
+
+After the correction for running 11 tests, every q-value is 0.955. Plainly: **in this data, markets didn't react differently to "worse" Red Sea events, as Jev measured "worse."** Possible reasons: the market reacts to the campaign rather than each incident; the severity labels are noisy; or the groups are too small to see a modest difference.
+
+**The profit search: no rule cleared the bar.** 6,480 per-trade and 240 daily rules were tried on 2015 to Nov 2025:
+- The strongest was buying the defense ETF ITA for 2 days after a military strike Episode starts: +0.92% per trade, 73% winners, t = 3.6, 22 trades.
+- With about 6,700 tries, the luckiest random rule would be expected to score about that high. So by the Deflated Sharpe bar fixed in ADR-0032, it isn't distinguishable from luck.
+- Because nothing was promoted, **the locked holdout year is still untouched.**
+- Defense names going up after strikes is at least economically sensible, and it held across 1-, 2-, 5- and 10-day holds. It's worth noting as an idea, not a finding.
+
+**The live feed got better.** Haiku's refinement prompt was fixed (PR #72): it now spells out the Region in words and names the common mistakes. Tuned on the teach set and confirmed on the test set twice, Haiku now catches **75–79%** of real events at **81–85%** precision, up from 43% recall at 92%. Adding Jev as a gate would push precision to about 86–91%. **Not yet deployed to Fly.**
+
 ## Where things stand (Nov 20, evening)
 
 | | |
