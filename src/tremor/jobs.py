@@ -96,6 +96,9 @@ def daily(cfg: Config | None = None) -> None:
     _step("recommendations", recs)
     _step("backtest", lambda: save_backtest(conn, run_backtest(events, prices, cfg)))
     _step("score live", lambda: score_live(conn, prices, cfg))
+    from tremor import paper
+
+    _step("paper trading", lambda: paper.daily_step(conn, cfg))
     _step("backup", lambda: backup(conn, cfg.storage_path.parent / "backups"))
 
 
