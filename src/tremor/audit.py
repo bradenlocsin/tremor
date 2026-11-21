@@ -59,15 +59,18 @@ def kappa(a: list[bool], b: list[bool]) -> float:
     return 1.0 if pe == 1 else (po - pe) / (1 - pe)
 
 
-def sample(conn: sqlite3.Connection, tax: Taxonomy, n: int, seed: int) -> list[dict]:
-    """Half kept, half rejected (or as many as exist), from Candidates refined under `tax`."""
+def sample(conn: sqlite3.Connection, tax: Taxonomy, n: int, seed: int,
+           queued_only: bool = False) -> list[dict]:
+    """Half kept, half rejected (or as many as exist), from Candidates refined under `tax`.
+    `queued_only`: only Candidates that came in through the Jev queue (ADR-0031)."""
     conn.row_factory = sqlite3.Row
+    extra = " AND source_url IN (SELECT source_url FROM jev_queue)" if queued_only else ""
     rows = [dict(r) for r in conn.execute(
-        """SELECT source_url, MIN(event_date) AS event_date, candidate_types, region,
+        f"""SELECT source_url, MIN(event_date) AS event_date, candidate_types, region,
                   MAX(actor1) AS actor1, MAX(actor2) AS actor2, MAX(place) AS place,
                   AVG(lat) AS lat, AVG(lon) AS lon, SUM(num_articles) AS coverage,
                   MAX(status) AS status
-           FROM candidates WHERE refined_tax = ? AND status IN ('refined', 'rejected')
+           FROM candidates WHERE refined_tax = ? AND status IN ('refined', 'rejected'){extra}
            GROUP BY source_url ORDER BY source_url""", (tax.version,))]
     conn.row_factory = None
     rng = random.Random(seed)
@@ -78,12 +81,13 @@ def sample(conn: sqlite3.Connection, tax: Taxonomy, n: int, seed: int) -> list[d
 
 
 def run(conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, checker, n: int = 100,
-        seed: int = 11, workers: int = 4, fetch=None, log=print) -> AuditResult:
+        seed: int = 11, workers: int = 4, fetch=None, log=print,
+        queued_only: bool = False) -> AuditResult:
     conn.executescript(SCHEMA)
     region = "red_sea"
     valid = {t.id for t in tax.event_types}
     system = system_prompt(tax, [a.ticker for a in cfg.assets], region)
-    cands = sample(conn, tax, n, seed)
+    cands = sample(conn, tax, n, seed, queued_only)
     kw = {"fetch": fetch} if fetch else {}
     with ThreadPoolExecutor(max_workers=16) as pool:
         arts = list(pool.map(lambda c: fetch_article(c["source_url"], c["event_date"], **kw),
@@ -95,6 +99,11 @@ def run(conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, checker, n: int = 
         "GROUP BY model ORDER BY COUNT(*) DESC LIMIT 1", (tax.version,)).fetchone()
     run_id = f"audit-{checker.model}-{datetime.now(UTC):%Y%m%dT%H%M%S}"
     a, b, type_pairs = [], [], []
+    from tremor.refine import Usage, record_spend
+
+    for _, u in preds:  # paid checkers (Claude) count against the daily cap like any refinement
+        if isinstance(u, Usage) and u.usd:
+            record_spend(conn, u, "audit")
     for cand, art, (res, _) in zip(cands, arts, preds):
         if isinstance(res, Exception):
             log(f"  skipped {cand['source_url']}: {res}")

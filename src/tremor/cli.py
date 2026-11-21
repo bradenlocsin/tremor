@@ -322,9 +322,14 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     cfg = load_config()
     conn = connect(cfg.storage_path)
-    checker = AgyRefiner(args.model) if args.model else AgyRefiner()
+    if args.engine == "claude":  # Gemini is unavailable (account disabled 2026-11-20)
+        from tremor.refine import ClaudeRefiner
+
+        checker = ClaudeRefiner(args.model or cfg.refinement_model)
+    else:
+        checker = AgyRefiner(args.model) if args.model else AgyRefiner()
     r = audit.run(conn, cfg, default_taxonomy().first_slice(), checker, n=args.n, seed=args.seed,
-                  workers=args.workers)
+                  workers=args.workers, queued_only=args.queued_only)
     print(f"{r.run_id}: n={r.n}  keep/reject agreement {r.keep_agreement:.0%}  "
           f"kappa {r.kappa:.2f}  same Event type when both keep "
           f"{'–' if r.type_agreement is None else f'{r.type_agreement:.0%}'}")
@@ -600,8 +605,11 @@ def build_parser() -> argparse.ArgumentParser:
     au = sub.add_parser("audit", help="re-check Codex's history decisions with Gemini (ADR-0029)")
     au.add_argument("--n", type=int, default=100)
     au.add_argument("--seed", type=int, default=11)
-    au.add_argument("--model", default=None, help="agy model id")
+    au.add_argument("--model", default=None, help="model id (agy or Claude)")
     au.add_argument("--workers", type=int, default=4)
+    au.add_argument("--engine", choices=["agy", "claude"], default="agy")
+    au.add_argument("--queued-only", action="store_true",
+                    help="only Candidates that came in through the Jev queue")
     au.set_defaults(func=cmd_audit)
     jv = sub.add_parser("jev", help="Jev jobs: full-pool headline screen, Event features")
     jv.add_argument("action", choices=["validate", "screen", "features", "queue"])
