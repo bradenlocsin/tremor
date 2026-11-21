@@ -193,6 +193,28 @@ After the correction for running 11 tests, every q-value is 0.955. Plainly: **in
 
 **The live feed got better.** Haiku's refinement prompt was fixed (PR #72): it now spells out the Region in words and names the common mistakes. Tuned on the teach set and confirmed on the test set twice, Haiku now catches **75–79%** of real events at **81–85%** precision, up from 43% recall at 92%. Adding Jev as a gate would push precision to about 86–91%. **Not yet deployed to Fly.**
 
+## Part 10: Is the best rule real? Three more checks (Nov 21)
+
+The profit search's best rule (buy ITA for 2 days after a military strike Episode starts) was checked three more ways, all on 2015–2025 data so the locked year stays untouched.
+
+1. **Robustness checks, rule on its own: passed all six.**
+   - Nearby holding periods also make money.
+   - It survives double costs.
+   - It still works without its 2 best trades.
+   - It was positive in 8 of 9 years.
+   - Random dates did as well only 0.6% of the time.
+   - Walk-forward return: +0.77% per trade.
+
+   The version requiring 2 separate articles (13 trades) also passed, at +1.26% per trade.
+2. **White's Reality Check: p ≈ 0.13.** The whole 6,720-rule search was rerun 200 times on random dates. In 12.5% of those runs, the best rule was at least as strong as ITA's (t = 3.6). A typical random search's best rule scores t ≈ 3.0. So ITA beats most random searches, but **not by enough to rule out luck** at the usual 5% level.
+3. **Probability of Backtest Overfitting (CSCV): 58%.** The 668 rules with at least 20 trades were compared on 924 different splits of the years into "found on" and "tested on" halves. The rule that looked best on one half finished **below the median** on the other half 58% of the time. Put simply, the rules that look best don't stay best, which is the signature of a search finding noise.
+
+**Conclusion:** there is no reliable edge in this search. The ITA rule remains an exploratory idea, paper-traded under ADR-0033.
+
+**The locked year stays unspent.** It holds only 6 military strike Episode starts (3 confirmed by 2 articles), too few to confirm anything, so using it now would waste it.
+
+**What the research says about paper trading** (see the sources in the chat log): paper trading over a few months proves the plumbing works, not the edge. Detecting a modest edge takes on the order of 100 trades. At the ITA rule's pace, about 1 to 5 confirmed signals a year, the forward test is a multi-year record. The fastest route to a real answer is more Episodes, meaning more Regions.
+
 ## Where things stand (Nov 20, evening)
 
 | | |

@@ -36,3 +36,11 @@ v1 Assets plus: USO, XLE; tanker stocks FRO, STNG, INSW, DHT, TNK; container lin
 The first full search is 7,200 per-trade and 240 daily rules. A rule's latest run is its trial, so rerunning the search doesn't double-count.
 
 Promotion and the holdout run are mechanical: every rule that clears the bar is confirmed, and none is picked by hand. That is why the ADR-0031 shock tests, which do use the whole history, can't steer which rules reach the holdout.
+
+## Result (2026-11-21)
+
+No rule cleared the bar: 6,480 per-trade and 240 daily rules. The best, long ITA for 2 days after a military strike Episode start (t = 3.6, 22 trades), was checked further on discovery data:
+- White's Reality Check, 200 random-date reruns of the whole search: p = 0.125.
+- Probability of Backtest Overfitting, CSCV over 12 blocks and 668 rules: 0.58.
+
+The holdout was not used.
