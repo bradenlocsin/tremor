@@ -164,14 +164,26 @@ The hourly news pull and refinement (on Claude Haiku) run there on their own. A 
 
 ---
 
+## Part 8: Finishing the history and the final audit (Nov 20–21, overnight)
+
+- **Codex finished everything.** The deep Jev queue of 3,354 articles was refined across two Codex windows (one waited for the 3:59 AM reset). The last re-check found no more possible Episode starts. **5,506 Red Sea Events** now, every one with Jev severity answers. Jev kept answering even after the $5 monthly credit showed $0 left.
+- **The final audit (Claude Haiku as the checker, Gemini being unavailable):** 200 random decisions on Jev-screened articles, half kept by Codex and half rejected. Haiku agreed 72% of the time (kappa 0.45), lower than Gemini's 86% earlier.
+- **Why so low:** Haiku read "Red Sea / Bab-el-Mandeb" as the water only and rejected strikes in Taiz, Sanaa, Mokha and Najran, even though the Region's box covers all of Yemen. A stronger model (Claude Sonnet) then judged all 55 disagreements:
+  - Of the 52 Codex kept and Haiku rejected: Codex right 38, Codex wrong 1, too unclear to call 13.
+  - Of the 3 Haiku kept and Codex rejected: Haiku right 2, unclear 1.
+  - So where the judge was confident, **Codex was right 38 of 41 times**.
+- **The same flaw affects the live feed.** The hourly job runs Haiku with that prompt. On the labeled test set Haiku had 92% precision but only 43% recall. Describing the Region in words raised recall to 61–71% but lowered precision to 71%. This is proposed in PR #72 and not merged, pending a decision.
+- **A bug fixed on the way:** the first audit run crashed while saving, because the results table had gained two columns. Fixed, with a test.
+- **Cost of the overnight work:** about $0.48 on the Claude API (audit $0.06 plus about $0.06 for the crashed run, judge $0.28, eval re-scoring $0.08), and Jev about $0.03.
+
 ## Where things stand (Nov 20, evening)
 
 | | |
 |---|---|
-| Red Sea Events | 4,812, from 2015 to Nov 2026 |
+| Red Sea Events | 5,506, from 2015 to Nov 2026 |
 | Episodes (independent data points) | about 115, before the deep queue is refined |
 | Headlines checked | all ~170,000 |
-| Still to refine | 2,694 queued articles (Codex resumes at 10:44 PM) |
+| Still to refine | none: the history is complete |
 | Paid API spend on history | about $0 (Codex and Gemini were on subscriptions) |
 | Jev spend | about $5.10 |
 

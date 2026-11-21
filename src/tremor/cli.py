@@ -299,7 +299,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         else:
             print("No Anthropic credentials found (set ANTHROPIC_API_KEY). Use --fake to test.")
             return 2
-        s = evalset.score(conn, cfg, default_taxonomy().first_slice(), refiner)
+        s = evalset.score(conn, cfg, default_taxonomy().first_slice(), refiner, split=args.split)
 
         def fmt(x):
             return "–" if x is None else f"{x:.0%}"
