@@ -106,6 +106,7 @@ def run(conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, checker, n: int = 
     for _, u in preds:  # paid checkers (Claude) count against the daily cap like any refinement
         if isinstance(u, Usage) and u.usd:
             record_spend(conn, u, "audit")
+    conn.commit()  # keep the spend record even if something below fails
     for cand, art, (res, _) in zip(cands, arts, preds):
         if isinstance(res, Exception):
             log(f"  skipped {cand['source_url']}: {res}")
@@ -120,7 +121,8 @@ def run(conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, checker, n: int = 
         if codex_keep and check_keep:
             type_pairs.append(codex_type == res.event_type)
         conn.execute(
-            "INSERT INTO audit_items VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO audit_items (run_id, source_url, headline, codex_keep, codex_type,"
+            " check_keep, check_type, check_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, cand["source_url"], art.title, int(codex_keep), codex_type,
              int(check_keep), res.event_type, res.noise_reason or res.summary))
     if not a:
