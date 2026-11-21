@@ -166,9 +166,19 @@ def live_signals(conn, events, calendar, gap: int, features: dict) -> dict[str, 
     from tremor.episodes import build_episodes, episode_starts
     from tremor.jev import flag
 
-    starts = episode_starts(build_episodes(events, calendar, gap))
-    known = known_dates(conn, [e.source_url for e in starts if e.source_url])
+    episodes = build_episodes(events, calendar, gap)
+    starts = episode_starts(episodes)
+    known = known_dates(conn, [e.source_url for ep in episodes for e in ep.events if e.source_url])
     out: dict[str, list[dict]] = {}
+    # "#2" sets: corroborated starts. At least 2 separate articles report Events of the type in
+    # the Episode's first 2 days; the signal is known when the second one is (false-alarm guard).
+    for ep in episodes:
+        early = [e for e in ep.events if (e.occurred_on - ep.start).days <= 2 and e.source_url]
+        days = sorted(known.get(e.source_url) or e.occurred_on for e in early)
+        if len({e.source_url for e in early}) >= 2:
+            out.setdefault(f"start:{ep.event_type}#2", []).append(
+                {"key": ep.first.source_url or ep.first.id, "occurred_on": ep.start,
+                 "known_on": days[1], "title": ep.first.title})
     for e in starts:
         s = {"key": e.source_url or e.id, "occurred_on": e.occurred_on,
              "known_on": known.get(e.source_url) or e.occurred_on, "title": e.title}

@@ -61,3 +61,19 @@ def test_fade_trades_against_the_spike():
                    date(2026, 12, 1))
     paper.generate(conn, {"s": [_sig("2026-12-08", "2026-12-04")]}, c, date(2026, 12, 8))
     assert conn.execute("SELECT direction FROM paper_orders").fetchone()[0] == -1
+
+
+def test_corroborated_signal_waits_for_a_second_article():
+    from tremor.events import Event
+
+    cal = pd.bdate_range("2026-11-02", periods=40)
+    ev = lambda i, d, u: Event(id=i, title=i, event_type="military_strike", region="red_sea",
+                               occurred_on=date.fromisoformat(d), source_url=u)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE candidates (source_url TEXT, date_added TEXT)")
+    conn.executemany("INSERT INTO candidates VALUES (?, ?)",
+                     [("a", "20261103000000"), ("b", "20261104000000"), ("c", "20261120000000")])
+    sigs = paper.live_signals(conn, [ev("1", "2026-11-03", "a"), ev("2", "2026-11-04", "b"),
+                                     ev("3", "2026-11-20", "c")], cal, 10, {})
+    assert [s["known_on"] for s in sigs["start:military_strike#2"]] == [date(2026, 11, 4)]
+    assert len(sigs["start:military_strike"]) == 2  # the lone Nov 20 report isn't corroborated
