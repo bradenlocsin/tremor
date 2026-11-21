@@ -209,7 +209,7 @@ def _predict(refiner, system: str, prompts: list[str], workers: int) -> list[tup
 
 def score(
     conn: sqlite3.Connection, cfg: Config, tax: Taxonomy, refiner: Refiner, fetch=None,
-    workers: int = 4,
+    workers: int = 4, split: str = "test",
 ) -> EvalScore:
     """Score `refiner` on every confidently labeled item. Writes no Events."""
     ensure_schema(conn)
@@ -219,7 +219,7 @@ def score(
     run_id = f"{refiner.model}-{prompt_hash}-{datetime.now(UTC):%Y%m%dT%H%M%S%f}"
     rows = conn.execute(
         "SELECT i.candidate, l.is_real_event, l.event_type, l.region FROM eval_items i"
-        " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0 AND i.split = 'test'"
+        " JOIN eval_labels l USING (source_url) WHERE l.unsure = 0 AND i.split = ?", (split,)
     ).fetchall()
     valid_types = {t.id for t in tax.event_types}
     real_hits = type_hits = type_total = region_hits = noise_hits = noise_total = 0
