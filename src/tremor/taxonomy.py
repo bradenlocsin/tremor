@@ -39,6 +39,7 @@ class Region:
     lat: tuple[float, float]
     lon: tuple[float, float]
     first_slice: bool
+    description: str = ""  # the Region in words, for prompts
 
     def contains(self, lat: float, lon: float) -> bool:
         return self.lat[0] <= lat <= self.lat[1] and self.lon[0] <= lon <= self.lon[1]
@@ -107,6 +108,7 @@ def load_taxonomy(path: Path = TAXONOMY_PATH) -> Taxonomy:
                 lat=tuple(r["lat"]),
                 lon=tuple(r["lon"]),
                 first_slice=r["first_slice"],
+                description=" ".join(r.get("description", "").split()),
             )
             for r in raw["regions"]
         ),

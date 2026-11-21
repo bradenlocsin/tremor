@@ -57,6 +57,7 @@ def gather(conn, fetch=None) -> list[dict]:
 def rules(tax: Taxonomy) -> str:
     types = "\n".join(f"- {t.id}: {t.definition} Example: {t.example}" for t in tax.event_types)
     regions = "\n".join(f"- {r.id}: {r.name} (lat {r.lat[0]}–{r.lat[1]}, lon {r.lon[0]}–{r.lon[1]})"
+                        + (f": {r.description}" if r.description else "")
                         for r in tax.regions if r.first_slice)
     return f"""Labeling rules for a geopolitical market-analysis tool.
 

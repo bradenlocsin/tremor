@@ -276,6 +276,8 @@ def system_prompt(tax: Taxonomy, tickers: list[str], region: str = "red_sea") ->
     types = "\n".join(f"- {t.id}: {t.definition} Example: {t.example}" for t in tax.event_types)
     r = next(x for x in tax.regions if x.id == region)
     where = f"{r.name} (latitude {r.lat[0]} to {r.lat[1]}, longitude {r.lon[0]} to {r.lon[1]})"
+    if r.description:
+        where += f". That is: {r.description}"
     return f"""You turn news articles into structured geopolitical Events for a market-analysis tool.
 
 Decide whether the article reports a specific event that actually happened, and if so classify it.
