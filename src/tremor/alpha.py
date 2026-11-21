@@ -148,18 +148,23 @@ def deflated_sharpe(sr: float, n: int, skew: float, kurt: float, trial_srs: list
     return float(stats.norm.cdf((sr - sr0) * math.sqrt(n - 1) / denom))
 
 
-def log_trial(conn: sqlite3.Connection, rule: Rule, period: str, s: dict) -> None:
+def log_trial(conn: sqlite3.Connection, rule: Rule | str, period: str, s: dict) -> None:
     conn.executescript(SCHEMA)
+    name = rule if isinstance(rule, str) else rule.name()
     conn.execute("INSERT INTO alpha_trials (at, rule, period, n, mean, sr, t, hit, skew, kurt)"
                  " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                 (datetime.now(UTC).isoformat(timespec="seconds"), rule.name(), period, s["n"],
+                 (datetime.now(UTC).isoformat(timespec="seconds"), name, period, s["n"],
                   s["mean"], s["sr"], s["t"], s["hit"], s["skew"], s["kurt"]))
 
 
-def trial_srs(conn: sqlite3.Connection) -> list[float]:
-    conn.executescript(SCHEMA)
+def trial_srs(conn: sqlite3.Connection, period: str = "discovery") -> list[float]:
+    """Sharpe ratios of every trial logged in one family: 'discovery' (per-trade rules) or
+    'discovery-daily' (intensity rules, daily Sharpe), which can't share a deflation pool."""
+    conn.executescript(SCHEMA)  # one per distinct rule (its latest run), so reruns don't count twice
     return [r[0] for r in conn.execute(
-        "SELECT sr FROM alpha_trials WHERE period = 'discovery' AND sr IS NOT NULL")]
+        "SELECT sr FROM alpha_trials a WHERE period = ? AND sr IS NOT NULL AND id = (SELECT"
+        " MAX(id) FROM alpha_trials b WHERE b.rule = a.rule AND b.period = a.period)",
+        (period,))]
 
 
 def evaluate(conn, known_on, opens, closes, rule: Rule) -> dict:
@@ -170,10 +175,26 @@ def evaluate(conn, known_on, opens, closes, rule: Rule) -> dict:
     return {"rule": rule.name(), **s}
 
 
-def promote(conn, results: list[dict], min_n: int = 20, bar: float = 0.9) -> list[dict]:
+def evaluate_fade(conn, signal, pairs, opens, closes, asset, hold, threshold, hedge) -> dict:
+    name = f"{signal}|{asset}|{hold}d|fade>{threshold:.0%}{'|hedged' if hedge else ''}"
+    t = fade_trades(pairs, opens, closes, asset, hold, threshold, hedge)
+    s = summarize(t["ret"].to_numpy())
+    log_trial(conn, name, "discovery", s)
+    return {"rule": name, **s}
+
+
+def evaluate_intensity(conn, known_on, opens, asset, window, ratio, label) -> dict:
+    name = f"intensity:{label}|{asset}|{window}d>{ratio:g}x"
+    s = summarize(intensity_returns(known_on, opens, asset, window, ratio=ratio).to_numpy())
+    log_trial(conn, name, "discovery-daily", s)
+    return {"rule": name, **s}
+
+
+def promote(conn, results: list[dict], min_n: int = 20, bar: float = 0.9,
+            period: str = "discovery") -> list[dict]:
     """ADR-0032 promotion bar: >= min_n trades, positive mean, Deflated Sharpe prob >= bar,
-    with the deflation counting every discovery trial ever logged."""
-    srs = trial_srs(conn)
+    with the deflation counting every trial ever logged in the same family."""
+    srs = trial_srs(conn, period)
     out = []
     for r in results:
         if r["sr"] is None or r["n"] < min_n or r["mean"] <= 0:
@@ -210,27 +231,91 @@ def known_dates(conn: sqlite3.Connection, urls: Iterable[str]) -> dict[str, date
     return out
 
 
-def signal_sets(conn, events, calendar, gap: int, features: dict) -> dict[str, list[date]]:
-    """Named sets of known-on dates: Episode starts per type, plus Jev-flagged subsets."""
+def signal_sets(conn, events, calendar, gap: int,
+                features: dict) -> dict[str, list[tuple[date, date]]]:
+    """Named sets of (occurred_on, known_on) pairs: Episode starts per type, Jev-flagged subsets
+    of them, and every Event per type ("all:", for the intensity rules)."""
     from tremor.episodes import build_episodes, episode_starts
     from tremor.jev import flag
 
     starts = episode_starts(build_episodes(events, calendar, gap))
-    known = known_dates(conn, [e.source_url for e in starts if e.source_url])
+    known = known_dates(conn, [e.source_url for e in events if e.source_url])
 
-    def when(e):  # fall back to the day after the Event when GDELT has no record
-        return known.get(e.source_url) or e.occurred_on
+    def pair(e):  # seed Events have no GDELT record: treat them as known on the day they occurred
+        return (e.occurred_on, known.get(e.source_url) or e.occurred_on)
 
-    sets: dict[str, list[date]] = {}
-    for t in sorted({e.event_type for e in starts}):
+    sets: dict[str, list[tuple[date, date]]] = {}
+    for t in sorted({e.event_type for e in events}):
+        sets[f"all:{t}"] = [pair(e) for e in events if e.event_type == t]
         group = [e for e in starts if e.event_type == t]
-        sets[f"start:{t}"] = [when(e) for e in group]
+        sets[f"start:{t}"] = [pair(e) for e in group]
         for f in ("vessel_damaged", "energy_target", "escalation"):
-            yes = [when(e) for e in group
+            yes = [pair(e) for e in group
                    if e.source_url in features and flag(features[e.source_url][f]) is True]
             if yes:
                 sets[f"start:{t}+{f}"] = yes
     return sets
+
+
+# ---------------------------------------------------------------- fade and intensity (ADR-0032)
+
+def fade_trades(signals: Iterable[tuple[date, date]], opens, closes, asset: str, hold: int,
+                threshold: float, hedge: bool = False, start: date = DISCOVERY_START,
+                end: date = HOLDOUT_START, allow_holdout: bool = False) -> pd.DataFrame:
+    """Trade against the move already made. For each (occurred_on, known_on): the spike is the
+    asset's close on the known day over its close the day before the Event (all known by the
+    entry open). If |spike| >= threshold, enter against it at the next open, hold `hold` days."""
+    if end > HOLDOUT_START and not allow_holdout:
+        raise HoldoutError(f"dates from {HOLDOUT_START} on are the locked holdout (ADR-0032)")
+    o, c = opens[asset].dropna(), closes[asset].dropna()
+    cal = o.index.intersection(c.index)
+    if hedge:
+        cal = cal.intersection(opens["SPY"].dropna().index)
+    cost = 2 * COST_BP[asset] / 1e4 + (2 * COST_BP["SPY"] / 1e4 if hedge else 0)
+    rows, busy_until = [], -1
+    for occ, k in sorted(set(signals), key=lambda s: s[1]):
+        if not (start <= k < end):
+            continue
+        before = int(cal.searchsorted(pd.Timestamp(occ))) - 1    # last close before the Event
+        known = int(cal.searchsorted(pd.Timestamp(k), side="right")) - 1  # close on/before k
+        i, j = known + 1, known + hold
+        if before < 0 or known < before or i <= busy_until or j >= len(cal) \
+                or cal[j].date() >= end:
+            continue
+        spike = c[cal[known]] / c[cal[before]] - 1
+        if abs(spike) < threshold:
+            continue
+        r = c[cal[j]] / o[cal[i]] - 1
+        if hedge:
+            r -= closes["SPY"][cal[j]] / opens["SPY"][cal[i]] - 1
+        rows.append((k, cal[i].date(), cal[j].date(), -np.sign(spike) * r - cost))
+        busy_until = j
+    return pd.DataFrame(rows, columns=["known_on", "entry", "exit", "ret"])
+
+
+def intensity_returns(known_on: Iterable[date], opens, asset: str, window: int = 20,
+                      base: int = 250, ratio: float = 1.0, start: date = DISCOVERY_START,
+                      end: date = HOLDOUT_START, allow_holdout: bool = False) -> pd.Series:
+    """Daily open-to-open returns of holding `asset` while the count of Events known in the last
+    `window` trading days exceeds `ratio` x its average over the prior `base` days. The position
+    for the open of day t uses only Events known on or before day t-1. Costs on each change."""
+    if end > HOLDOUT_START and not allow_holdout:
+        raise HoldoutError(f"dates from {HOLDOUT_START} on are the locked holdout (ADR-0032)")
+    o = opens[asset].dropna()
+    cal = o.index
+    hits = pd.Series(0.0, index=cal)
+    for k in known_on:
+        i = int(cal.searchsorted(pd.Timestamp(k)))
+        if i < len(cal):
+            hits.iloc[i] += 1
+    recent = hits.rolling(window).sum()
+    normal = recent.shift(window).rolling(base).mean()
+    on = (recent > ratio * normal) & (normal > 0)
+    pos = on.shift(1, fill_value=False).astype(float)  # decided at t-1, held from open t
+    ret = o.shift(-1) / o - 1                           # open t -> open t+1
+    daily = pos * ret - pos.diff().abs().fillna(0) * COST_BP[asset] / 1e4
+    keep = (cal.date >= start) & (cal.date < end)
+    return daily[keep].dropna()
 
 
 def summary_json(rows: list[dict]) -> str:

@@ -25,10 +25,14 @@ What earlier work suggests, which shapes where we look:
 
 v1 Assets plus: USO, XLE; tanker stocks FRO, STNG, INSW, DHT, TNK; container lines ZIM, MATX, DAC, GSL; tanker freight BWET; defense LMT, RTX, NOC. Prices from yfinance (personal, non-commercial use), with opens and closes, stored apart from the production prices.
 
-## Rule families searched
+## Rule families searched (fixed 2026-11-20, before the first run)
 
-- **Drift:** after an Episode start of a type, hold an asset for 1, 2, 5, 10 or 20 days, optionally hedged against SPY.
-- **Severity filters:** the same, only for Events Jev flags as `vessel_damaged`, `energy_target` or `escalation`.
-- **Fade:** after a large day-0 move, trade against it.
-- **Intensity regime:** hold shipping stocks while the 20-day count of shipping attacks is above its one-year average.
+- **Drift:** after an Episode start of a type, long or short an asset for 1, 2, 5, 10 or 20 days, with or without a SPY hedge.
+- **Severity filters:** the same, only for Episode starts Jev flags as `vessel_damaged`, `energy_target` or `escalation`.
+- **Fade:** the spike is the asset's close on the day the news was known, over its close the day before the Event. If the spike is at least 2% (or 4%), trade against it from the next open for 1, 2, 5 or 10 days, with or without the hedge.
+- **Intensity regime:** hold an asset (open to open) while the count of Events of a type known in the last 10 (or 20) trading days is above 1x (or 2x) its average over the prior year. Each day's position uses only Events known the day before. Daily Sharpe, so these trials form their own deflation pool (`discovery-daily`, at least 250 days).
 - **De-escalation:** later, once ceasefire and route-reopening Events are tracked.
+
+The first full search is 7,200 per-trade and 240 daily rules. A rule's latest run is its trial, so rerunning the search doesn't double-count.
+
+Promotion and the holdout run are mechanical: every rule that clears the bar is confirmed, and none is picked by hand. That is why the ADR-0031 shock tests, which do use the whole history, can't steer which rules reach the holdout.
