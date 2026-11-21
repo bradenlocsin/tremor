@@ -526,6 +526,25 @@ def cmd_alpha(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_paper(args: argparse.Namespace) -> int:
+    """Paper trading (ADR-0033): switch a rule on, or show the ledger."""
+    from tremor import paper
+    from tremor.storage import connect
+
+    conn = connect(load_config().storage_path)
+    if args.action == "activate":
+        spec = paper.Spec(args.signal, args.asset, args.hold, args.hedge, direction=args.direction)
+        paper.activate(conn, args.rule_id, spec, args.why)
+        print(f"active: {args.rule_id} {spec}")
+        return 0
+    for r, s, a in paper.rules(conn):
+        print(f"rule {r}: {s} since {a}")
+    led = paper.ledger(conn)
+    print(led.to_string() if not led.empty else "no orders yet")
+    print("order chain", "ok" if paper.chain_ok(conn) else "BROKEN")
+    return 0
+
+
 def cmd_jobs(args: argparse.Namespace) -> int:
     from tremor import jobs
 
@@ -626,6 +645,16 @@ def build_parser() -> argparse.ArgumentParser:
     al.add_argument("action", choices=["fetch", "discover"])
     al.add_argument("--anyway", action="store_true", help="search before the backfill is done")
     al.set_defaults(func=cmd_alpha)
+    pp = sub.add_parser("paper", help="paper trading: activate a rule, or show the ledger")
+    pp.add_argument("action", choices=["status", "activate"])
+    pp.add_argument("--rule-id")
+    pp.add_argument("--signal")
+    pp.add_argument("--asset")
+    pp.add_argument("--hold", type=int)
+    pp.add_argument("--direction", type=int, default=1, choices=[1, -1])
+    pp.add_argument("--hedge", action="store_true")
+    pp.add_argument("--why", default="")
+    pp.set_defaults(func=cmd_paper)
     jb = sub.add_parser("jobs", help="run a scheduled job once")
     jb.add_argument("which", choices=["hourly", "daily"])
     jb.set_defaults(func=cmd_jobs)
