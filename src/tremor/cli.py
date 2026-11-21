@@ -484,24 +484,37 @@ def cmd_alpha(args: argparse.Namespace) -> int:
     events = [e for e in load_events(conn, region="red_sea")]
     sets = alpha.signal_sets(conn, events, closes.index, cfg.event_study.episode_gap_trading_days,
                              jev.answers(conn, "features"))
-    results = []
-    for name, dates in sets.items():
-        for asset in alpha.RESEARCH_TICKERS:
-            if asset == "SPY":
-                continue
+    assets = [a for a in alpha.RESEARCH_TICKERS if a != "SPY"]
+    results, daily = [], []
+    for name, pairs in sets.items():
+        known = [k for _, k in pairs]
+        if name.startswith("all:"):  # intensity rules use every Event, held daily
+            for asset in assets:
+                for window in (10, 20):
+                    for ratio in (1.0, 2.0):
+                        daily.append(alpha.evaluate_intensity(conn, known, opens, asset, window,
+                                                              ratio, name[4:]))
+            continue
+        for asset in assets:
             for hold in (1, 2, 5, 10, 20):
-                for direction in (1, -1):
-                    for hedge in (False, True):
+                for hedge in (False, True):
+                    for direction in (1, -1):
                         rule = alpha.Rule(name, asset, hold, direction, hedge)
-                        results.append(alpha.evaluate(conn, dates, opens, closes, rule))
+                        results.append(alpha.evaluate(conn, known, opens, closes, rule))
+                    if hold <= 10:
+                        for threshold in (0.02, 0.04):
+                            results.append(alpha.evaluate_fade(
+                                conn, name, pairs, opens, closes, asset, hold, threshold, hedge))
     conn.commit()
     promoted = alpha.promote(conn, results)
-    print(f"{len(results):,} rules tried on discovery data ({len(alpha.trial_srs(conn)):,} "
-          f"logged in total); {len(promoted)} clear the bar (ADR-0032).")
-    for r in promoted[:25]:
-        print(f"  {r['rule']:55s} n={r['n']:3d} mean={r['mean']:+.2%} hit={r['hit']:.0%} "
+    promoted_daily = alpha.promote(conn, daily, min_n=250, period="discovery-daily")
+    print(f"{len(results):,} per-trade and {len(daily):,} daily rules tried on discovery data; "
+          f"{len(promoted)} and {len(promoted_daily)} clear the bar (ADR-0032).")
+    for r in (promoted + promoted_daily)[:30]:
+        print(f"  {r['rule']:60s} n={r['n']:4d} mean={r['mean']:+.2%} hit={r['hit']:.0%} "
               f"t={r['t']:.1f} DSR={r['dsr']:.2f}")
-    out = {"tried": len(results), "promoted": promoted,
+    out = {"tried": len(results) + len(daily), "promoted": promoted,
+           "promoted_daily": promoted_daily,
            "top_by_t": sorted([r for r in results if r["t"] is not None and r["n"] >= 20],
                               key=lambda r: -r["t"])[:40]}
     (cfg.storage_path.parent / "alpha-discovery.json").write_text(json.dumps(out, indent=1))
