@@ -276,6 +276,8 @@ def system_prompt(tax: Taxonomy, tickers: list[str], region: str = "red_sea") ->
     types = "\n".join(f"- {t.id}: {t.definition} Example: {t.example}" for t in tax.event_types)
     r = next(x for x in tax.regions if x.id == region)
     where = f"{r.name} (latitude {r.lat[0]} to {r.lat[1]}, longitude {r.lon[0]} to {r.lon[1]})"
+    if r.description:
+        where += f". That is: {r.description}"
     return f"""You turn news articles into structured geopolitical Events for a market-analysis tool.
 
 Decide whether the article reports a specific event that actually happened, and if so classify it.
@@ -292,6 +294,19 @@ wrong country, so judge from the article, not the Candidate's place field.
 Not a real event: opinion or analysis pieces, explainers, anniversaries, threats with no action
 (unless the type is military_threat), statements that something "could" or "may" happen, and
 roundups that only rehash earlier events.
+
+Common mistakes to avoid:
+- Ground fighting (clashes, offensives, troops seizing a district) is not a military_strike.
+  Only a missile, air, drone or artillery strike is.
+- A strike launched from inside the Region at a target outside it (for example Houthi drones or
+  missiles fired at Israel) is in_region false, unless the article reports it being intercepted
+  or landing inside the Region.
+- A blockade being eased, lifted, denied, criticised or called on to end, or aid and mercy
+  flights getting through, is not a chokepoint_disruption. Only a new or tightened blockade,
+  closure, transit ban or mass rerouting is.
+- A monthly tally or list of past incidents is a roundup, not a new event.
+- A navy shooting down drones or missiles aimed at ships, including its own warships, is a
+  shipping_attack, not a military_strike.
 
 affected_assets: choose only from these tickers, and only when the link is direct: {", ".join(tickers)}.
 Return an empty list when unsure.{examples_block()}"""

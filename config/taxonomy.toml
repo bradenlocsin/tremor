@@ -128,6 +128,11 @@ name = "Red Sea / Bab-el-Mandeb"
 # which flooded the wider box with unrelated conflict news (checked on real GDELT data, v2).
 lat = [10.5, 22.5]
 lon = [37.5, 51.5]
+# In words, because models read "Red Sea" as the water only (Haiku audit, 2026-11-21).
+description = """the southern Red Sea (south of Jeddah), the Bab el-Mandeb strait and the Gulf of \
+Aden, and on land: all of Yemen (including Sanaa, Taiz, Hodeidah, Mokha, Aden, Marib, Saada and \
+al-Jawf), Djibouti, Eritrea, northern Somalia (Somaliland and Puntland), and southwestern Saudi \
+Arabia (Jizan, Najran, Asir/Abha and the Red Sea coast up to Jeddah)"""
 first_slice = true
 
 [[regions]]
