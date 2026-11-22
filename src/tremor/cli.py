@@ -79,11 +79,22 @@ def cmd_gdelt(args: argparse.Namespace) -> int:
     conn = connect(cfg.storage_path)
     gdelt.ensure_schema(conn)
     tax = default_taxonomy() if args.all else default_taxonomy().first_slice()
+    scope = None
+    if getattr(args, "region", None):  # a new Region's own pass over the files
+        from tremor.taxonomy import Taxonomy
+
+        full = default_taxonomy()
+        tax = Taxonomy(version=tax.version, event_types=full.first_slice().event_types,
+                       regions=tuple(r for r in full.regions if r.id == args.region))
+        if not tax.regions:
+            print(f"unknown Region {args.region!r}")
+            return 2
+        scope = args.region
     if args.action == "backfill":
         start = date.fromisoformat(args.start)
         end = date.fromisoformat(args.end) if args.end else date.today() - timedelta(days=1)
         print(f"backfilling GDELT 1.0 daily files {start} → {end}")
-        print(f"kept {gdelt.backfill(conn, tax, start, end, workers=args.workers)} Candidates")
+        print(f"kept {gdelt.backfill(conn, tax, start, end, workers=args.workers, scope=scope)} Candidates")
     elif args.action == "pull":
         print(f"kept {gdelt.pull_latest(conn, tax)} Candidates from GDELT 2.0")
     for region, types, n, urls in gdelt.candidate_counts(conn):
@@ -580,6 +591,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--end", default=None, help="default: yesterday")
     g.add_argument("--workers", type=int, default=6)
     g.add_argument("--all", action="store_true", help="every Region and type, not just the first slice")
+    g.add_argument("--region", default=None,
+                   help="backfill one other Region (first-slice Event types), tracked separately")
     g.set_defaults(func=cmd_gdelt)
     rf = sub.add_parser("refine", help="LLM-refine Candidates into Events")
     rf.add_argument("--fake", action="store_true", help="dry run with the deterministic refiner")
