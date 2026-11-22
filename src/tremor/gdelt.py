@@ -210,15 +210,19 @@ def _process(name: str, url: str, version: str, tax: Taxonomy) -> tuple[str, lis
 
 def backfill(
     conn: sqlite3.Connection, tax: Taxonomy, start: date, end: date, workers: int = 6,
-    log=print,
+    log=print, scope: str | None = None,
 ) -> int:
-    """Ingest GDELT 1.0 daily files from start to end (inclusive). Resumable."""
+    """Ingest GDELT 1.0 daily files from start to end (inclusive). Resumable.
+
+    `scope` names a separate pass over the same files for other Regions (e.g. "hormuz"): files
+    are then tracked as "v1/YYYYMMDD#scope", so a day already pulled for the Red Sea is pulled
+    again for the new Region. Without it, tracking is shared (the original Red Sea backfill)."""
     ensure_schema(conn)
     done = done_files(conn)
     jobs = []
     d = start
     while d <= end:
-        name = f"v1/{d:%Y%m%d}"
+        name = f"v1/{d:%Y%m%d}" + (f"#{scope}" if scope else "")
         if name not in done:
             jobs.append((name, V1_DAILY_URL.format(day=f"{d:%Y%m%d}")))
         d += timedelta(days=1)
@@ -254,7 +258,8 @@ def pull_latest(conn: sqlite3.Connection, tax: Taxonomy, now: datetime | None = 
     """Hourly job: ingest every GDELT 2.0 15-minute file not yet processed."""
     ensure_schema(conn)
     now = now or datetime.now(UTC).replace(tzinfo=None)
-    row = conn.execute("SELECT MAX(name) FROM gdelt_files WHERE name LIKE 'v2/%'").fetchone()
+    row = conn.execute("SELECT MAX(name) FROM gdelt_files WHERE name LIKE 'v2/%'"
+                       " AND name NOT LIKE '%#%'").fetchone()
     last = datetime.strptime(row[0][3:], "%Y%m%d%H%M%S") if row and row[0] else None
     total = 0
     for stamp in v2_stamps_since(last, now):

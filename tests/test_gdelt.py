@@ -76,3 +76,22 @@ def test_stale_candidates_are_not_picked(tmp_path):
     save_candidates(conn, parse_rows(fresh + "\n" + stale, "v1", TAX), "v1/20231119")
     urls = {c["source_url"] for c in pick_candidates(conn, "red_sea", 5)}
     assert urls == {"https://x.com/ship-seized-today"}
+
+
+def test_a_new_region_backfills_days_already_done_for_the_red_sea(monkeypatch):
+    import sqlite3
+    from datetime import date
+
+    from tremor import gdelt
+
+    conn = sqlite3.connect(":memory:")
+    gdelt.ensure_schema(conn)
+    conn.execute("INSERT INTO gdelt_files VALUES ('v1/20190601', 5, 'x')")
+    seen = []
+    monkeypatch.setattr(gdelt, "_process", lambda n, u, v, t: (seen.append(n), (n, []))[1])
+    gdelt.backfill(conn, None, date(2019, 6, 1), date(2019, 6, 2), workers=1, log=lambda m: None)
+    assert seen == ["v1/20190602"]
+    seen.clear()
+    gdelt.backfill(conn, None, date(2019, 6, 1), date(2019, 6, 2), workers=1, log=lambda m: None,
+                   scope="hormuz")
+    assert sorted(seen) == ["v1/20190601#hormuz", "v1/20190602#hormuz"]
