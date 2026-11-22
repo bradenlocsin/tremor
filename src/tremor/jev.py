@@ -72,9 +72,22 @@ class Judgment:
     input_tokens: int
 
 
-def ask(client: TypeSafeClient, headline: str, text: str) -> Judgment:
+def region_text(region_id: str = "red_sea") -> str:
+    """The Region in words for the `in_region` question (from the taxonomy; Jev is weak with
+    coordinates). The Red Sea keeps the exact wording its thresholds were tuned with."""
+    if region_id == "red_sea":
+        return REGION
+    from tremor.taxonomy import default_taxonomy
+
+    r = next(x for x in default_taxonomy().regions if x.id == region_id)
+    if not r.description:
+        raise ValueError(f"Region {region_id!r} has no description for Jev")
+    return r.description
+
+
+def ask(client: TypeSafeClient, headline: str, text: str, region: str = REGION) -> Judgment:
     state = {"article": {"headline": headline or "", "text": (text or "")[:MAX_CHARS]},
-             "region": REGION}
+             "region": region}
     r = client.system_one(state, QUESTIONS, model=MODEL)
     probs = {k: float(r.answers[k].noul) for k in QUESTIONS}
     tokens = int(getattr(r.usage, "input_tokens", 0) or 0)
@@ -169,14 +182,14 @@ def _ask(client, state: dict, questions: dict) -> Judgment:
                     int(getattr(r.usage, "input_tokens", 0) or 0))
 
 
-def screen_state(cand: dict) -> dict:
+def screen_state(cand: dict, region: str = REGION) -> dict:
     """Headline-only state for the full-pool screen: no article fetch."""
     from tremor.refine import headline_from_url
 
     actors = [a for a in (cand.get("actor1"), cand.get("actor2")) if a]
     return {"article": {"headline": headline_from_url(cand["source_url"]),
                         "actors_named": actors, "place_named": cand.get("place") or ""},
-            "region": REGION}
+            "region": region}
 
 
 SCREEN = {k: QUESTIONS[k] for k in ("incident", "ship_attacked", "land_strike", "blockade",
@@ -191,6 +204,7 @@ def run(conn, kind: str, todo: list[tuple[str, dict]], workers: int = 16, log=pr
     questions = SCREEN if kind == "screen" else FEATURES
     client = client_factory()
     stats = {"done": 0, "errors": 0, "tokens": 0}
+    streak = 0  # consecutive failures: a quota or auth cut-off mid-run stops the run cleanly
 
     def one(item):
         url, state = item
@@ -203,11 +217,15 @@ def run(conn, kind: str, todo: list[tuple[str, dict]], workers: int = 16, log=pr
         for i, (url, j) in enumerate(pool.map(one, todo), 1):
             if isinstance(j, Exception):
                 stats["errors"] += 1
+                streak += 1
                 if stats["errors"] <= 3:
                     log(f"  {url}: {j}")
-                if stats["errors"] >= 50 and stats["done"] == 0:
-                    raise RuntimeError(f"Jev keeps failing: {j}")
+                if streak >= 50:
+                    conn.commit()
+                    raise RuntimeError(f"Jev failed 50 times in a row ({stats['done']:,} saved;"
+                                       f" rerun to resume): {j}")
                 continue
+            streak = 0
             save(conn, url, kind, j)
             stats["done"] += 1
             stats["tokens"] += j.input_tokens
