@@ -31,10 +31,13 @@ from urllib.request import Request, urlopen
 REPO = Path(__file__).resolve().parents[1]
 ENGINE = "agy" if "--engine" in sys.argv and sys.argv[sys.argv.index("--engine") + 1] == "agy" \
     else "codex"
-LOG = REPO / "data" / f"{ENGINE}-supervisor.log"
-STOP = REPO / "data" / f"{ENGINE}-supervisor.stop"
+REGION = sys.argv[sys.argv.index("--region") + 1] if "--region" in sys.argv else "red_sea"
+_TAG = ENGINE if REGION == "red_sea" else f"{ENGINE}-{REGION}"
+LOG = REPO / "data" / f"{_TAG}-supervisor.log"
+STOP = REPO / "data" / f"{_TAG}-supervisor.stop"
 AGY_MODEL = "gemini-3.8-flash-medium"  # best precision/recall/speed balance on the Eval set
-REFINE = ["uv", "run", "tremor", "refine", "--backfill", "--engine", ENGINE, "--workers", "6"] + (
+REFINE = ["uv", "run", "tremor", "refine", "--backfill", "--engine", ENGINE, "--workers", "6",
+          "--region", REGION] + (
     ["--model", AGY_MODEL, "--oldest-first"] if ENGINE == "agy" else [])
 POLL = 15 * 60
 WEEKLY_AFTER = timedelta(hours=6)
@@ -84,7 +87,7 @@ def remaining() -> int:
 
     conn = connect(load_config().storage_path)
     tax = default_taxonomy().first_slice()
-    n = len(pick_candidates(conn, "red_sea", 3, taxonomy_version=tax.version))
+    n = len(pick_candidates(conn, REGION, 3, taxonomy_version=tax.version))
     conn.close()
     return n
 
@@ -130,6 +133,9 @@ def main() -> int:
     queued = False
     while not STOP.exists():
         before = remaining()
+        if before == 0 and REGION != "red_sea":  # the Jev queue/features steps are Red Sea only
+            notify(f"TREMOR: the {REGION} top-3 refinement is finished ({ENGINE} saw none left).")
+            return 0
         if before == 0 and not queued and os.environ.get("TYPESAFE_API_KEY"):
             # Main backfill done: queue Jev-flagged possible Episode starts once (ADR-0031)
             q = subprocess.run(["uv", "run", "tremor", "jev", "queue"], capture_output=True,

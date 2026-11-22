@@ -81,14 +81,7 @@ def cmd_gdelt(args: argparse.Namespace) -> int:
     tax = default_taxonomy() if args.all else default_taxonomy().first_slice()
     scope = None
     if getattr(args, "region", None):  # a new Region's own pass over the files
-        from tremor.taxonomy import Taxonomy
-
-        full = default_taxonomy()
-        tax = Taxonomy(version=tax.version, event_types=full.first_slice().event_types,
-                       regions=tuple(r for r in full.regions if r.id == args.region))
-        if not tax.regions:
-            print(f"unknown Region {args.region!r}")
-            return 2
+        tax = default_taxonomy().for_region(args.region)
         scope = args.region
     if args.action == "backfill":
         start = date.fromisoformat(args.start)
@@ -129,8 +122,11 @@ def cmd_refine(args: argparse.Namespace) -> int:
     else:
         print("No Anthropic credentials found (set ANTHROPIC_API_KEY). Use --fake for a dry run.")
         return 2
+    region = args.region
+    tax = (default_taxonomy().first_slice() if region == "red_sea"
+           else default_taxonomy().for_region(region))
     stats = refine_candidates(
-        conn, cfg, default_taxonomy().first_slice(), refiner,
+        conn, cfg, tax, refiner, region=region,
         purpose="backfill" if args.backfill else "refine",
         per_day_per_type=args.per_day, since=args.since, limit=args.limit,
         workers=args.workers or workers, oldest_first=args.oldest_first,
@@ -595,6 +591,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="backfill one other Region (first-slice Event types), tracked separately")
     g.set_defaults(func=cmd_gdelt)
     rf = sub.add_parser("refine", help="LLM-refine Candidates into Events")
+    rf.add_argument("--region", default="red_sea", help="Region id (default red_sea)")
     rf.add_argument("--fake", action="store_true", help="dry run with the deterministic refiner")
     rf.add_argument("--backfill", action="store_true", help="charge the one-time backfill budget")
     rf.add_argument("--per-day", type=int, default=3, help="most-covered URLs per day and type")
