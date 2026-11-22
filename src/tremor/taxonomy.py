@@ -71,6 +71,15 @@ class Taxonomy:
             regions=tuple(r for r in self.regions if r.first_slice),
         )
 
+    def for_region(self, region_id: str) -> "Taxonomy":
+        """The first-slice Event types with one Region (for a new Region's own pipeline)."""
+        regions = tuple(r for r in self.regions if r.id == region_id)
+        if not regions:
+            raise ValueError(f"unknown Region {region_id!r}")
+        return Taxonomy(version=self.version,
+                        event_types=tuple(t for t in self.event_types if t.first_slice),
+                        regions=regions)
+
     def region_for(self, lat: float, lon: float) -> Region | None:
         """First Region containing the point (Regions are checked in file order)."""
         return next((r for r in self.regions if r.contains(lat, lon)), None)
