@@ -140,6 +140,11 @@ id = "hormuz"
 name = "Strait of Hormuz / Persian Gulf"
 lat = [23.0, 30.5]
 lon = [47.5, 57.5]
+description = """the Persian Gulf, the Strait of Hormuz and the western Gulf of Oman (as far east as \
+Fujairah and Oman's Musandam peninsula), and on land: Kuwait, Bahrain, Qatar, the United Arab \
+Emirates, eastern Saudi Arabia (including Dammam, Ras Tanura and Abqaiq), Iraq's Gulf coast at Umm Qasr and \
+al-Faw, and southern Iran's Gulf coast and islands (including Bushehr, \
+Bandar Abbas, Kharg Island and Hormozgan). Not Muscat, the Arabian Sea, Tehran or Baghdad"""
 first_slice = false
 
 [[regions]]
