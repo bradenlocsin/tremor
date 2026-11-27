@@ -4,11 +4,19 @@
 
 > Work in progress. First slice: the Red Sea / Bab-el-Mandeb, five ETFs. See the [issues](https://github.com/bradenlocsin/tremor/issues/1).
 
-## First result
+## Results so far
+
+The Red Sea history is complete: **5,506 Events from 2015 to Nov 2026**, grouped into **about 115 Episodes** (independent data points), from ~170,000 GDELT headlines. Full write-up in the [project log](docs/project-log.md).
+
+- **Pre-registered shock tests (11 tests): nothing significant.** Markets didn't react differently to "worse" Red Sea events (ships damaged, energy targets, escalations). After correcting for 11 tests, every q-value is 0.955.
+- **Profit search (6,720 rules, 2015 to Nov 2025): no reliable edge.** The best rule, long the defense ETF ITA for 2 days after a military strike (t = 3.6, 22 trades), passed six robustness checks but not the overfitting tests: White's Reality Check p ≈ 0.13, probability of backtest overfitting 58%. It is paper-traded as an exploratory idea ([ADR-0033](docs/adr/0033-exploratory-paper-rule.md)). The locked holdout year is untouched.
+- **Live event detection:** Claude Haiku catches 75–79% of real events at 81–85% precision on the held-out test set (labels from an independent model panel, not humans; see [ADR-0025](docs/adr/0025-eval-set-labeled-by-a-codex-model-panel.md)).
+
+### The first chart
 
 ![Average cumulative abnormal returns after Red Sea shipping attacks](docs/charts/red-sea-shipping-attacks-light.png)
 
-How did markets react in the 20 trading days after Red Sea shipping attacks, beyond what the overall market explains? Based on 6 hand-verified Events, too few to be statistically meaningful yet (the minimum is 8). The GDELT pipeline will supply the full history.
+How did markets react in the 20 trading days after Red Sea shipping attacks, beyond what the overall market explains? This early chart uses only the 6 hand-verified seed Events, too few to be statistically meaningful (the minimum is 8). Charts from the full history are next.
 
 ## Case study
 
